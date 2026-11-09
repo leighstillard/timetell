@@ -1,0 +1,76 @@
+flowchart TD
+s((Start))
+InspectDiff[Inspect Diff]
+d0{Secrets Found}
+subgraph L0 ["Gate Round (max 5)"]
+  l0{{"↻"}}:::loop
+  Simplify[Simplify]
+  subgraph L1 ["Efficiency Fix"]
+    l1{{"↻"}}:::loop
+    EfficiencyReview[Efficiency Review]
+    d1{Efficiency Pass}
+    FixFindings[Fix Findings]
+  end
+  Verify[Verify]
+  d2{Verify Failed}
+  FixBlocker[Fix Blocker]
+  IsUserVisible[Is User Visible]
+  d3{User Visible}
+  DesignCheck[Design Check]
+  d4{PR Not Open}
+  OpenPR[Open PR]
+  IndependentReview[Independent Review]
+  d5{Review Clean}
+  FixFindings_2[Fix Findings]
+end
+d6{Out Of Rounds}
+subgraph L2 ["Babysit CI"]
+  l2{{"↻"}}:::loop
+  CheckCI[Check CI]
+  d7{CI Green}
+  FixCI[Fix CI]
+end
+Merge[Merge]
+Cleanup[Cleanup]
+e((End))
+s --> InspectDiff
+InspectDiff --> d0
+d0 -- yes --> e
+d0 -- no --> l0
+l0 --> Simplify
+Simplify --> l1
+l1 --> EfficiencyReview
+EfficiencyReview --> d1
+d1 -- no --> FixFindings
+FixFindings -.-> l1
+d1 -- yes --> Verify
+Verify --> d2
+d2 -- yes --> FixBlocker
+d2 -- no --> IsUserVisible
+IsUserVisible --> d3
+d3 -- yes --> DesignCheck
+DesignCheck --> d4
+d3 -- no --> d4
+d4 -- yes --> OpenPR
+OpenPR --> IndependentReview
+d4 -- no --> IndependentReview
+IndependentReview --> d5
+d5 -- no --> FixFindings_2
+FixFindings_2 -.-> l0
+FixBlocker -.-> l0
+l0 -- done --> d6
+d5 -- yes --> d6
+d6 -- yes --> e
+d6 -- no --> l2
+l2 --> CheckCI
+CheckCI --> d7
+d7 -- no --> FixCI
+FixCI -.-> l2
+d7 -- yes --> Merge
+Merge --> Cleanup
+Cleanup --> e
+classDef loop fill:#fde7c8,stroke:#c77700,stroke-width:2px
+linkStyle 9,23,24,32 stroke:#c77700,stroke-width:2px
+style L0 fill:#fffaf2,stroke:#c77700,stroke-dasharray:4
+style L1 fill:#fde6c6,stroke:#c77700,stroke-dasharray:4
+style L2 fill:#fffaf2,stroke:#c77700,stroke-dasharray:4

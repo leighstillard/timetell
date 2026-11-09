@@ -1,0 +1,45 @@
+flowchart LR
+s((Start))
+PlanTasks[Plan Tasks]
+subgraph L0 ["each task in tasks"]
+  l0{{"↻"}}:::loop
+  subgraph L1 ["while attempt <= 3"]
+    l1{{"↻"}}:::loop
+    subgraph L2 ["forever"]
+      l2{{"↻"}}:::loop
+      CallModel[Call Model]
+      d0{Turn Done}
+      subgraph L3 ["each call in reply.ToolCalls"]
+        l3{{"↻"}}:::loop
+        RunTool[Run Tool]
+      end
+    end
+    RunTests[Run Tests]
+    d1{Tests Pass}
+  end
+end
+OpenPR[Open PR]
+e((End))
+s --> PlanTasks
+PlanTasks --> l0
+l0 --> l1
+l1 --> l2
+l2 --> CallModel
+CallModel --> d0
+d0 -- no --> l3
+l3 --> RunTool
+RunTool -.-> l3
+l3 -. done .-> l2
+d0 -- yes --> RunTests
+RunTests --> d1
+d1 -. no .-> l1
+l1 -. done .-> l0
+d1 -. yes .-> l0
+l0 -- done --> OpenPR
+OpenPR --> e
+classDef loop fill:#fde7c8,stroke:#c77700,stroke-width:2px
+linkStyle 8,9,12,13,14 stroke:#c77700,stroke-width:2px
+style L0 fill:#fffaf2,stroke:#c77700,stroke-dasharray:4
+style L1 fill:#fff1de,stroke:#c77700,stroke-dasharray:4
+style L2 fill:#fde6c6,stroke:#c77700,stroke-dasharray:4
+style L3 fill:#fbd9ab,stroke:#c77700,stroke-dasharray:4

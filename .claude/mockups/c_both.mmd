@@ -1,0 +1,30 @@
+flowchart LR
+s((Start))
+subgraph L0 ["each order in orders"]
+  l0{{"↻ each order"}}:::loop
+  subgraph L1 ["while attempt <= 3"]
+    l1{{"↻ retry"}}:::loop
+    ChargeCard[Charge Card]
+    d0{"err == nil"}
+  end
+  d1{Needs Shipping}
+  ShipOrder[Ship Order]
+end
+SendReport[Send Report]
+e((End))
+s --> l0
+l0 --> l1
+l1 --> ChargeCard
+ChargeCard --> d0
+d0 -. no .-> l1
+l1 -- done --> d1
+d0 -- yes --> d1
+d1 -- yes --> ShipOrder
+ShipOrder -.-> l0
+d1 -. no .-> l0
+l0 -- done --> SendReport
+SendReport --> e
+classDef loop fill:#fde7c8,stroke:#c77700,stroke-width:2px
+linkStyle 4,8,9 stroke:#c77700,stroke-width:2px
+style L0 fill:#fff8ee,stroke:#c77700,stroke-dasharray:4
+style L1 fill:#fdecd6,stroke:#c77700,stroke-dasharray:4
