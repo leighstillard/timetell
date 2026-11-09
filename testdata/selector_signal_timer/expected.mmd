@@ -1,0 +1,13 @@
+flowchart LR
+s((Start))
+Approve[Approve]
+Close[Close]
+Escalate[Escalate]
+w0{{Select}}
+e((End))
+s --> w0
+w0 -- approve --> Approve
+w0 -- timer 24h --> Escalate
+Approve --> Close
+Escalate --> Close
+Close --> e

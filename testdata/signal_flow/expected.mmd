@@ -1,0 +1,33 @@
+%% NotificationWorkflow
+flowchart LR
+s((Start))
+SendNotification[Send Notification]
+w0{{notify_shipped}}
+e((End))
+s --> w0
+w0 --> SendNotification
+SendNotification --> e
+
+%% OrderWorkflow
+flowchart LR
+s((Start))
+CompleteOrder[Complete Order]
+ProcessOrder[Process Order]
+x0[/"Signal 'ship_order'"\]
+e((End))
+s --> ProcessOrder
+ProcessOrder --> x0
+x0 --> CompleteOrder
+CompleteOrder --> e
+
+%% ShippingWorkflow
+flowchart LR
+s((Start))
+ShipPackage[Ship Package]
+w0{{ship_order}}
+x0[/"Signal 'notify_shipped'"\]
+e((End))
+s --> w0
+w0 --> ShipPackage
+ShipPackage --> x0
+x0 --> e

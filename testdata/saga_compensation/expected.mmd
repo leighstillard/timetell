@@ -1,0 +1,13 @@
+flowchart LR
+s((Start))
+ChargePayment[Charge Payment]
+ReleaseInventory[Release Inventory]
+ReserveInventory[Reserve Inventory]
+ShipOrder[Ship Order]
+e((End))
+s --> ReserveInventory
+ReserveInventory --> ChargePayment
+ChargePayment -- error --> ReleaseInventory
+ReleaseInventory --> e
+ChargePayment --> ShipOrder
+ShipOrder --> e

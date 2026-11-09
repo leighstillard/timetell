@@ -1,0 +1,14 @@
+flowchart LR
+s((Start))
+Charge[Charge]
+FraudCheck[Fraud Check]
+FraudCheckV2[Fraud Check V2]
+v0{"Version add-fraud-check"}
+e((End))
+s --> v0
+v0 -- 1 --> FraudCheck
+v0 -- 2 --> FraudCheckV2
+FraudCheck --> Charge
+FraudCheckV2 --> Charge
+v0 -- other --> Charge
+Charge --> e

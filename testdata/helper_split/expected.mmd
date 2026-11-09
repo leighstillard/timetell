@@ -1,0 +1,10 @@
+flowchart LR
+s((Start))
+Dispatch[Dispatch]
+Pack[Pack]
+Reserve[Reserve]
+e((End))
+s --> Reserve
+Reserve --> Pack
+Pack --> Dispatch
+Dispatch --> e

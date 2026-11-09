@@ -1,0 +1,10 @@
+flowchart LR
+s((Start))
+ProcessOrder[Process Order]
+e((End))
+subgraph g0 [go]
+SendReminder[Send Reminder]
+end
+s -. go .-> SendReminder
+s --> ProcessOrder
+ProcessOrder --> e

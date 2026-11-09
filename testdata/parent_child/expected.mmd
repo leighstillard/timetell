@@ -1,0 +1,29 @@
+%% OrderWorkflow
+flowchart LR
+s((Start))
+ManagerApproval[Manager Approval]
+PaymentWorkflow[[Payment Workflow]]
+SendConfirmation[Send Confirmation]
+ValidateOrder[Validate Order]
+d0{High Value}
+e((End))
+s --> ValidateOrder
+ValidateOrder --> d0
+d0 -- yes --> ManagerApproval
+ManagerApproval --> PaymentWorkflow
+d0 -- no --> PaymentWorkflow
+PaymentWorkflow --> SendConfirmation
+SendConfirmation --> e
+
+%% PaymentWorkflow
+flowchart LR
+s((Start))
+ProcessPayment[Process Payment]
+Verify3DS[Verify3DS]
+d0{Requires 3DS}
+e((End))
+s --> ProcessPayment
+ProcessPayment --> d0
+d0 -- yes --> Verify3DS
+Verify3DS --> e
+d0 -- no --> e

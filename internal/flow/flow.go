@@ -1,0 +1,608 @@
+// Package flow builds a workflow's Graph by walking the type-checked AST of
+// its function body, statement by statement (docs/control-flow.md).
+package flow
+
+import (
+	"fmt"
+	"go/ast"
+	"go/token"
+	"go/types"
+	"strconv"
+	"strings"
+
+	"github.com/leighstillard/timetell/internal/discover"
+	"github.com/leighstillard/timetell/internal/load"
+)
+
+// Kind is what a Node draws.
+type Kind int
+
+const (
+	Start Kind = iota
+	End
+	Activity
+	LocalActivity
+	Decision
+	Loop
+	Unknown // unresolved name or unsupported construct: [/?/]
+)
+
+// Node is one vertex. Label is raw: the renderer splits and quotes it.
+type Node struct {
+	ID    string
+	Kind  Kind
+	Label string
+	Pos   token.Position
+}
+
+// Edge is a directed edge. Back marks a loop's back edge, which path
+// counting skips.
+type Edge struct {
+	From, To, Label string
+	Back            bool
+}
+
+// Graph is one workflow. Nodes and Edges are in creation order.
+type Graph struct {
+	Workflow string
+	Nodes    []*Node
+	Edges    []Edge
+	Warnings []load.Warning
+}
+
+// exit is a dangling edge: from a node, with the label its next edge carries.
+type exit struct{ from, label string }
+
+// frame is a breakable statement (loop, switch) on the walk stack.
+type frame struct {
+	label     string
+	loop      bool
+	brk, cont []exit
+}
+
+type walker struct {
+	g      *Graph
+	info   *types.Info
+	fset   *token.FileSet
+	dirs   map[int]string // line -> //timetell:decision label
+	ids    map[string]int
+	seen   map[Edge]bool
+	fr     []exit // the frontier
+	frames []*frame
+	label  string // label of the enclosing LabeledStmt, for the next frame
+}
+
+const directive = "//timetell:decision "
+
+// Build walks fn's body into a Graph.
+func Build(fn *discover.Func) *Graph {
+	w := &walker{
+		g:    &Graph{Workflow: fn.Obj.Name()},
+		info: fn.Pkg.TypesInfo,
+		fset: fn.Pkg.Fset,
+		dirs: map[int]string{},
+		ids:  map[string]int{},
+		seen: map[Edge]bool{},
+	}
+	for _, f := range fn.Pkg.Syntax {
+		if f.Pos() <= fn.Decl.Pos() && fn.Decl.Pos() < f.End() {
+			for _, cg := range f.Comments {
+				for _, c := range cg.List {
+					if s, ok := strings.CutPrefix(c.Text, directive); ok {
+						w.dirs[w.fset.Position(c.Pos()).Line] = strings.TrimSpace(s)
+					}
+				}
+			}
+		}
+	}
+	w.g.Nodes = append(w.g.Nodes, &Node{ID: "s", Kind: Start, Label: "Start"})
+	w.fr = []exit{{from: "s"}}
+	w.stmts(fn.Decl.Body.List)
+	w.connect(w.fr, "e", "", false)
+	w.g.Nodes = append(w.g.Nodes, &Node{ID: "e", Kind: End, Label: "End"})
+	return w.g
+}
+
+func (w *walker) warn(p token.Pos, msg string) {
+	w.g.Warnings = append(w.g.Warnings, load.Warning{Pos: w.fset.Position(p), Msg: msg})
+}
+
+func (w *walker) connect(fr []exit, to, label string, back bool) {
+	for _, x := range fr {
+		e := Edge{From: x.from, To: to, Label: x.label, Back: back}
+		if label != "" {
+			e.Label = label
+		}
+		if !w.seen[e] {
+			w.seen[e] = true
+			w.g.Edges = append(w.g.Edges, e)
+		}
+	}
+}
+
+// node creates a node, connects the frontier to it and makes it the
+// frontier. Activities are numbered per name (Name, Name_2); the rest per
+// kind prefix in source order (d0, l0, q0).
+func (w *walker) node(k Kind, label string, p token.Pos) string {
+	var id string
+	switch k {
+	case Activity, LocalActivity:
+		w.ids[label]++
+		id = label
+		if n := w.ids[label]; n > 1 {
+			id += "_" + strconv.Itoa(n)
+		}
+	default:
+		pre := map[Kind]string{Decision: "d", Loop: "l", Unknown: "q"}[k]
+		id = pre + strconv.Itoa(w.ids[pre])
+		w.ids[pre]++
+	}
+	w.g.Nodes = append(w.g.Nodes, &Node{ID: id, Kind: k, Label: label, Pos: w.fset.Position(p)})
+	w.connect(w.fr, id, "", false)
+	w.fr = []exit{{from: id}}
+	return id
+}
+
+// labelFor is the //timetell:decision label on the line above p, else def.
+func (w *walker) labelFor(p token.Pos, def string) string {
+	if s, ok := w.dirs[w.fset.Position(p).Line-1]; ok {
+		return s
+	}
+	// ponytail: fixed 40-rune cut; make it a Config field if labels need it.
+	if r := []rune(def); len(r) > 40 {
+		return string(r[:39]) + "…"
+	}
+	return def
+}
+
+func (w *walker) stmts(list []ast.Stmt) {
+	for _, s := range list {
+		if w.fr == nil { // unreachable; go vet reports it
+			return
+		}
+		w.stmt(s)
+	}
+}
+
+func (w *walker) stmt(s ast.Stmt) {
+	lbl := w.label
+	w.label = ""
+	switch s := s.(type) {
+	case *ast.BlockStmt:
+		w.stmts(s.List)
+	case *ast.LabeledStmt:
+		w.label = s.Label.Name
+		w.stmt(s.Stmt)
+	case *ast.ReturnStmt:
+		label := ""
+		for _, r := range s.Results {
+			if c, ok := ast.Unparen(r).(*ast.CallExpr); ok && load.Classify(w.info, c) == load.NewContinueAsNewError {
+				label = "continue-as-new"
+			}
+		}
+		w.scan(s)
+		w.connect(w.fr, "e", label, false)
+		w.fr = nil
+	case *ast.IfStmt:
+		w.ifStmt(s)
+	case *ast.SwitchStmt, *ast.TypeSwitchStmt:
+		w.switchStmt(s, lbl)
+	case *ast.ForStmt, *ast.RangeStmt:
+		w.loop(s, lbl)
+	case *ast.BranchStmt:
+		w.branch(s)
+	case *ast.DeferStmt:
+		if w.temporal(s, true) {
+			w.warn(s.Pos(), "defer with Temporal calls is not drawn (timetell-pas.25)")
+		}
+	case *ast.GoStmt:
+		if w.temporal(s, true) {
+			w.warn(s.Pos(), "native go statement with Temporal calls is not drawn (timetell-pas.27)")
+		}
+	case *ast.SelectStmt:
+		if w.temporal(s, true) {
+			w.warn(s.Pos(), "native select statement with Temporal calls is not drawn (timetell-pas.27)")
+		}
+	default: // ExprStmt, AssignStmt, DeclStmt, IncDecStmt, SendStmt, EmptyStmt
+		w.scan(s)
+	}
+}
+
+func (w *walker) branch(s *ast.BranchStmt) {
+	switch s.Tok {
+	case token.GOTO:
+		w.warn(s.Pos(), "goto is not supported; the path ends here")
+		w.node(Unknown, "?", s.Pos())
+		w.fr = nil
+	case token.BREAK, token.CONTINUE:
+		for i := len(w.frames) - 1; i >= 0; i-- {
+			f := w.frames[i]
+			if s.Label != nil && f.label != s.Label.Name || s.Label == nil && s.Tok == token.CONTINUE && !f.loop {
+				continue
+			}
+			if s.Tok == token.BREAK {
+				f.brk = append(f.brk, w.fr...)
+			} else {
+				f.cont = append(f.cont, w.fr...)
+			}
+			break
+		}
+		w.fr = nil
+	}
+	// fallthrough is handled by switchStmt.
+}
+
+func (w *walker) push(f *frame) func() {
+	w.frames = append(w.frames, f)
+	return func() { w.frames = w.frames[:len(w.frames)-1] }
+}
+
+// walkFlat walks stmts that draw nothing (only for their warnings) and
+// leaves the frontier as it was.
+func (w *walker) walkFlat(list []ast.Stmt) {
+	start := w.fr
+	w.stmts(list)
+	w.fr = start
+}
+
+func (w *walker) ifStmt(s *ast.IfStmt) {
+	if s.Init != nil {
+		w.stmt(s.Init)
+	}
+	w.scan(s.Cond)
+	if w.isErrCheck(s.Cond) {
+		hasCalls := w.temporal(s.Body, false)
+		if !hasCalls && len(s.Body.List) > 0 {
+			if _, ok := s.Body.List[len(s.Body.List)-1].(*ast.ReturnStmt); ok {
+				if s.Else != nil {
+					w.stmt(s.Else)
+				}
+				return // plain error return: not drawn
+			}
+		}
+		if hasCalls { // compensation: an 'error' edge, no diamond
+			start := w.fr
+			w.fr = nil
+			for _, x := range start {
+				w.fr = append(w.fr, exit{x.from, "error"})
+			}
+			w.stmts(s.Body.List)
+			errFr := w.fr
+			w.fr = start
+			if s.Else != nil {
+				w.stmt(s.Else)
+			}
+			w.fr = append(errFr, w.fr...)
+			return
+		}
+	}
+	if !w.effect(s.Body, nil) && (s.Else == nil || !w.effect(s.Else, nil)) {
+		w.walkFlat(s.Body.List)
+		if s.Else != nil {
+			w.walkFlat([]ast.Stmt{s.Else})
+		}
+		return
+	}
+	if s.Else != nil && w.sig(s.Body.List) == w.sig([]ast.Stmt{s.Else}) {
+		w.stmts(s.Body.List) // identical arms: no decision
+		return
+	}
+	d := w.node(Decision, w.labelFor(s.Pos(), types.ExprString(s.Cond)), s.Pos())
+	w.fr = []exit{{d, "yes"}}
+	w.stmts(s.Body.List)
+	yes := w.fr
+	w.fr = []exit{{d, "no"}}
+	if s.Else != nil {
+		w.stmt(s.Else)
+	}
+	w.fr = append(yes, w.fr...)
+}
+
+func (w *walker) switchStmt(s ast.Stmt, lbl string) {
+	var body *ast.BlockStmt
+	tag := "switch"
+	switch s := s.(type) {
+	case *ast.SwitchStmt:
+		if s.Init != nil {
+			w.stmt(s.Init)
+		}
+		if s.Tag != nil {
+			w.scan(s.Tag)
+			tag = types.ExprString(s.Tag)
+		}
+		body = s.Body
+	case *ast.TypeSwitchStmt:
+		if s.Init != nil {
+			w.stmt(s.Init)
+		}
+		w.stmt(s.Assign)
+		ast.Inspect(s.Assign, func(n ast.Node) bool {
+			if ta, ok := n.(*ast.TypeAssertExpr); ok {
+				tag = types.ExprString(ta)
+			}
+			return true
+		})
+		body = s.Body
+	}
+	f := &frame{label: lbl}
+	defer w.push(f)()
+	if !w.effect(body, s) {
+		for _, c := range body.List {
+			w.walkFlat(c.(*ast.CaseClause).Body)
+		}
+		return
+	}
+	if same := w.sameClauses(body); same != nil {
+		w.stmts(same) // identical arms: no decision
+		w.fr = append(w.fr, f.brk...)
+		return
+	}
+	d := w.node(Decision, w.labelFor(s.Pos(), tag), s.Pos())
+	var out, carry []exit
+	other := []exit{{d, "other"}}
+	for _, c := range body.List {
+		cc := c.(*ast.CaseClause)
+		label := "default"
+		if cc.List == nil {
+			other = nil
+		} else {
+			var cases []string
+			for _, e := range cc.List {
+				cases = append(cases, types.ExprString(e))
+			}
+			label = strings.Join(cases, ", ")
+		}
+		w.fr = append([]exit{{d, label}}, carry...)
+		w.stmts(cc.Body)
+		carry = nil
+		if n := len(cc.Body); n > 0 {
+			if b, ok := cc.Body[n-1].(*ast.BranchStmt); ok && b.Tok == token.FALLTHROUGH {
+				carry = w.fr
+				continue
+			}
+		}
+		out = append(out, w.fr...)
+	}
+	w.fr = append(append(out, f.brk...), other...)
+}
+
+// sameClauses returns the shared body when every clause of a switch with a
+// default draws the same thing, else nil.
+// ponytail: a switch with fallthrough never collapses.
+func (w *walker) sameClauses(body *ast.BlockStmt) []ast.Stmt {
+	var first []ast.Stmt
+	dflt := false
+	for i, c := range body.List {
+		cc := c.(*ast.CaseClause)
+		if n := len(cc.Body); n > 0 {
+			if b, ok := cc.Body[n-1].(*ast.BranchStmt); ok && b.Tok == token.FALLTHROUGH {
+				return nil
+			}
+		}
+		dflt = dflt || cc.List == nil
+		if i == 0 {
+			first = cc.Body
+		} else if w.sig(cc.Body) != w.sig(first) {
+			return nil
+		}
+	}
+	if !dflt {
+		return nil
+	}
+	return first
+}
+
+// sig fingerprints what list draws: it walks list in a scratch walker from a
+// fresh exit, so equal arms give equal strings whatever their positions.
+// The scratch walk's warnings are discarded; the real walk repeats them.
+// ponytail: re-walks arms, so nested if/else costs 3^depth walks; memoise
+// per statement if deep nesting shows up.
+func (w *walker) sig(list []ast.Stmt) string {
+	sub := &walker{g: &Graph{}, info: w.info, fset: w.fset, dirs: w.dirs,
+		ids: map[string]int{}, seen: map[Edge]bool{}, fr: []exit{{from: "x"}}}
+	for _, f := range w.frames {
+		sub.frames = append(sub.frames, &frame{label: f.label, loop: f.loop})
+	}
+	sub.stmts(list)
+	var b strings.Builder
+	for _, n := range sub.g.Nodes {
+		fmt.Fprintf(&b, "%d %q;", n.Kind, n.Label)
+	}
+	fmt.Fprint(&b, sub.g.Edges, sub.fr)
+	for _, f := range sub.frames {
+		fmt.Fprint(&b, f.brk, f.cont)
+	}
+	return b.String()
+}
+
+func (w *walker) loop(s ast.Stmt, lbl string) {
+	var body *ast.BlockStmt
+	var post ast.Stmt
+	label, forever := "forever", false
+	switch s := s.(type) {
+	case *ast.ForStmt:
+		if s.Init != nil {
+			w.stmt(s.Init)
+		}
+		if s.Cond != nil {
+			w.scan(s.Cond)
+			label = "while " + types.ExprString(s.Cond)
+		} else {
+			forever = true
+		}
+		body, post = s.Body, s.Post
+	case *ast.RangeStmt:
+		w.scan(s.X)
+		var vars []string
+		for _, v := range []ast.Expr{s.Key, s.Value} {
+			if id, ok := v.(*ast.Ident); ok && id.Name != "_" {
+				vars = append(vars, id.Name)
+			}
+		}
+		label = "each " + strings.Join(vars, ", ") + " in " + types.ExprString(s.X)
+		body = s.Body
+	}
+	f := &frame{label: lbl, loop: true}
+	defer w.push(f)()
+	if !w.effect(body, s) {
+		w.walkFlat(body.List)
+		return
+	}
+	l := w.node(Loop, w.labelFor(s.Pos(), label), s.Pos())
+	w.fr = []exit{{l, "do"}}
+	w.stmts(body.List)
+	w.fr = append(w.fr, f.cont...)
+	if post != nil {
+		w.stmt(post)
+	}
+	for _, x := range w.fr {
+		if x.label == "" {
+			x.label = "loop"
+		}
+		w.connect([]exit{x}, l, "", true)
+	}
+	w.fr = nil
+	if !forever {
+		w.fr = []exit{{l, "done"}}
+	}
+	w.fr = append(w.fr, f.brk...)
+}
+
+// scan emits nodes for the Temporal calls in n, in source order. It does not
+// enter closures: the construct that consumes a closure walks it.
+func (w *walker) scan(n ast.Node) {
+	ast.Inspect(n, func(x ast.Node) bool {
+		switch x := x.(type) {
+		case *ast.FuncLit:
+			if w.temporal(x.Body, false) {
+				w.warn(x.Pos(), "closure with Temporal calls is not drawn (timetell-pas.26)")
+			}
+			return false
+		case *ast.BinaryExpr:
+			if x.Op == token.LAND || x.Op == token.LOR {
+				w.scan(x.X)
+				if w.temporal(x.Y, false) {
+					w.warn(x.Y.Pos(), "Temporal call in the right operand of "+x.Op.String()+" runs conditionally but is drawn as unconditional")
+				}
+				w.scan(x.Y)
+				return false
+			}
+		case *ast.CallExpr:
+			w.call(x)
+		}
+		return true
+	})
+}
+
+func (w *walker) call(c *ast.CallExpr) {
+	k := load.Classify(w.info, c)
+	if k != load.ExecuteActivity && k != load.ExecuteLocalActivity || len(c.Args) < 2 {
+		return
+	}
+	t, ok := load.ResolveTarget(w.info, c.Args[1])
+	if !ok {
+		w.warn(c.Args[1].Pos(), "dynamic activity name")
+		w.node(Unknown, "?", c.Pos())
+		return
+	}
+	kind := Activity
+	if k == load.ExecuteLocalActivity {
+		kind = LocalActivity
+	}
+	w.node(kind, t.Name, c.Pos())
+}
+
+// silent are SDK calls that never draw anything by themselves.
+var silent = map[load.Kind]bool{load.None: true, load.WithActivityOptions: true, load.GetSignalChannel: true,
+	load.NewSelector: true, load.RegisterWorkflow: true, load.RegisterActivity: true}
+
+// temporal reports whether n contains an SDK call that draws something;
+// deep also looks inside closures.
+func (w *walker) temporal(n ast.Node, deep bool) bool {
+	found := false
+	ast.Inspect(n, func(x ast.Node) bool {
+		if c, ok := x.(*ast.CallExpr); ok && !silent[load.Classify(w.info, c)] {
+			found = true
+		}
+		_, lit := x.(*ast.FuncLit)
+		return !found && (deep || !lit)
+	})
+	return found
+}
+
+// effect reports whether n draws a node or leaves the normal flow: a Temporal
+// call, a return, a goto, or a break/continue whose target is outside n.
+// self is the statement n belongs to (its own breaks don't count).
+func (w *walker) effect(n ast.Node, self ast.Node) bool {
+	var stack []ast.Node
+	if self != nil {
+		stack = append(stack, self)
+	}
+	found := false
+	ast.Inspect(n, func(x ast.Node) bool {
+		if found { // Inspect still visits siblings; don't let them clear it
+			return false
+		}
+		switch x := x.(type) {
+		case nil:
+			stack = stack[:len(stack)-1]
+			return false
+		case *ast.FuncLit:
+			return false
+		case *ast.ReturnStmt:
+			found = true
+		case *ast.CallExpr:
+			found = !silent[load.Classify(w.info, x)]
+		case *ast.BranchStmt:
+			found = escapes(x, stack)
+		}
+		if found {
+			return false
+		}
+		stack = append(stack, x)
+		return true
+	})
+	return found
+}
+
+func escapes(b *ast.BranchStmt, stack []ast.Node) bool {
+	switch b.Tok {
+	case token.GOTO:
+		return true
+	case token.FALLTHROUGH:
+		return false
+	}
+	for i := len(stack) - 1; i >= 0; i-- {
+		if b.Label != nil {
+			if l, ok := stack[i].(*ast.LabeledStmt); ok && l.Label.Name == b.Label.Name {
+				return false
+			}
+			continue
+		}
+		switch stack[i].(type) {
+		case *ast.ForStmt, *ast.RangeStmt:
+			return false
+		case *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt:
+			if b.Tok == token.BREAK {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+var errorType = types.Universe.Lookup("error").Type()
+
+// isErrCheck reports whether cond is `x != nil` (either way round) with x
+// of type error.
+// ponytail: only != nil with the error arm as Body; `err == nil` with an
+// else arm stays a decision.
+func (w *walker) isErrCheck(cond ast.Expr) bool {
+	b, ok := ast.Unparen(cond).(*ast.BinaryExpr)
+	if !ok || b.Op != token.NEQ {
+		return false
+	}
+	isNil := func(e ast.Expr) bool { return w.info.Types[e].IsNil() }
+	isErr := func(e ast.Expr) bool { return types.Identical(w.info.TypeOf(e), errorType) }
+	return isNil(b.Y) && isErr(b.X) || isNil(b.X) && isErr(b.Y)
+}

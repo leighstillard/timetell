@@ -1,0 +1,10 @@
+flowchart LR
+s((Start))
+ProcessData[Process Data]
+SaveResult[Save Result]
+ValidateInput[Validate Input]
+e((End))
+s --> ValidateInput
+ValidateInput --> ProcessData
+ProcessData --> SaveResult
+SaveResult --> e

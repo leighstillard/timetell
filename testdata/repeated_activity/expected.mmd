@@ -1,0 +1,10 @@
+flowchart LR
+s((Start))
+ChargeCard[Charge Card]
+SendEmail[Send Email]
+SendEmail_2[Send Email]
+e((End))
+s --> SendEmail
+SendEmail --> ChargeCard
+ChargeCard --> SendEmail_2
+SendEmail_2 --> e

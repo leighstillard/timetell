@@ -1,0 +1,13 @@
+flowchart LR
+s((Start))
+HandleTimeout[Handle Timeout]
+ProcessApproved[Process Approved]
+SubmitRequest[Submit Request]
+w0{{Wait For Approval}}
+e((End))
+s --> SubmitRequest
+SubmitRequest --> w0
+w0 -- Signaled --> ProcessApproved
+ProcessApproved --> e
+w0 -- Timeout --> HandleTimeout
+HandleTimeout --> e
