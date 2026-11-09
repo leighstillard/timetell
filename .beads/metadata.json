@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "timetell",
+  "project_id": "825b7dae-ff0c-42e6-a601-62ffbdb4df98"
+}
