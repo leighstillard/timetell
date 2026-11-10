@@ -1,6 +1,8 @@
 package timetell
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -69,6 +71,17 @@ func TestConfigErrors(t *testing.T) {
 		if _, err := Graph("testdata", cfg, "./trivial"); err == nil {
 			t.Errorf("%+v: no error", cfg)
 		}
+	}
+}
+
+// A module with no packages: packages.Load finds nothing and reports no error.
+func TestNoWorkflows(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module m\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Graph(dir, DefaultConfig(), "./..."); err == nil {
+		t.Error("no error")
 	}
 }
 

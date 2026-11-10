@@ -72,6 +72,9 @@ func Graph(dir string, cfg Config, patterns ...string) ([]byte, error) {
 	words := flow.Labels{Start: cfg.StartLabel, End: cfg.EndLabel, Yes: cfg.DecisionTrueLabel, No: cfg.DecisionFalseLabel}
 	opts := render.Options{Direction: cfg.Direction, SplitNamesByWords: cfg.SplitNamesByWords}
 	roots := discover.Discover(pkgs).Roots
+	if len(roots) == 0 { // packages.Load finds nothing, without error, outside a module or package
+		return nil, fmt.Errorf("no workflows found in %s", strings.Join(patterns, " "))
+	}
 	if cfg.Workflow != "" {
 		roots = slices.DeleteFunc(roots, func(r *discover.Func) bool { return r.Obj.Name() != cfg.Workflow })
 		if len(roots) == 0 {
