@@ -18,6 +18,7 @@ func Approval(ctx workflow.Context, req string) error {
 	}
 	ch := workflow.GetSignalChannel(ctx, ApproveSignal)
 	//timetell:decision Wait For Approval
+	//timetell:decision WaitForApproval
 	ok, err := workflow.AwaitWithTimeout(ctx, 24*time.Hour, func() bool { return ch.ReceiveAsync(nil) })
 	if err != nil {
 		return err

@@ -20,6 +20,7 @@ var (
 		flow.Start: {"((", "))"}, flow.End: {"((", "))"},
 		flow.Activity: {"[", "]"}, flow.LocalActivity: {"[", "]"}, // ponytail: local drawn like activity until :::local styling is asked for
 		flow.Decision: {"{", "}"}, flow.Unknown: {"[/", "/]"}, // Loop: drawn by Mermaid as a subgraph
+		flow.Signal: {"{{", "}}"}, flow.Timer: {"(", ")"},
 	}
 )
 
@@ -36,8 +37,8 @@ func id(s string) string {
 // Options are the Config fields the renderer reads.
 type Options struct {
 	Direction string // TD or LR
-	// SplitNamesByWords splits camelCase activity names into words. Python
-	// splits decisions and signals instead; here decision labels are
+	// SplitNamesByWords splits camelCase activity and signal names into
+	// words. Python splits decisions and signals; here decision labels are
 	// directive text or condition source, which splitting would mangle.
 	SplitNamesByWords bool
 }
@@ -47,7 +48,7 @@ var Default = Options{Direction: "TD", SplitNamesByWords: true}
 
 func label(n *flow.Node, split bool) string {
 	l := n.Label
-	if split && (n.Kind == flow.Activity || n.Kind == flow.LocalActivity) {
+	if split && (n.Kind == flow.Activity || n.Kind == flow.LocalActivity || n.Kind == flow.Signal) {
 		l = camel.ReplaceAllString(l, "$1 $2")
 	}
 	if n.Kind == flow.Unknown || plain.MatchString(l) {

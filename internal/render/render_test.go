@@ -14,7 +14,7 @@ import (
 // rest of testdata/.
 func TestGolden(t *testing.T) {
 	for _, fx := range []string{"trivial", "simple_linear", "money_transfer", "saga_compensation",
-		"repeated_activity", "loop_retry", "loop_range", "loop_forever", "loop_nested"} {
+		"repeated_activity", "loop_retry", "loop_range", "loop_forever", "loop_nested", "approval", "waits"} {
 		t.Run(fx, func(t *testing.T) {
 			pkgs, err := load.Load("../../testdata", "./"+fx)
 			if err != nil {

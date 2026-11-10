@@ -33,6 +33,7 @@ func TestGraphGolden(t *testing.T) {
 		{"money_transfer", "expected_paths.txt", paths},
 		{"money_transfer", "expected_paths_capped.txt", capped},
 		{"loop_nested", "expected_paths.txt", paths},
+		{"approval", "expected_paths.txt", paths}, // the wait is a decision point
 		{"classify", "expected_full.txt", full},
 	} {
 		t.Run(c.fixture+"/"+c.golden, func(t *testing.T) {

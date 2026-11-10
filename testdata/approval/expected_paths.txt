@@ -1,0 +1,6 @@
+
+--- Execution Paths (2 total) ---
+Decision Points: 1
+
+Path 1: Start → SubmitRequest → WaitForApproval → ProcessApproved → End
+Path 2: Start → SubmitRequest → WaitForApproval → HandleTimeout → End
