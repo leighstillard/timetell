@@ -57,3 +57,11 @@ func TestDoneBackEdge(t *testing.T) {
 		t.Errorf("done back edge styling:\n%s", out)
 	}
 }
+
+// A loop subgraph must not take the ID of an activity node.
+func TestSubgraphIDClash(t *testing.T) {
+	g := &flow.Graph{Nodes: []*flow.Node{{ID: "l0", Kind: flow.Loop, Label: "x"}, {ID: "L0", Kind: flow.Activity, Label: "L0", In: "l0"}}}
+	if out := string(Mermaid(g)); !strings.Contains(out, "subgraph L0_ [") || !strings.Contains(out, "style L0_ ") {
+		t.Errorf("subgraph ID clash:\n%s", out)
+	}
+}

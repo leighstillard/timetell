@@ -69,8 +69,10 @@ func Mermaid(g *flow.Graph) []byte {
 		return strings.Compare(id(a.ID), id(c.ID))
 	})
 	in := map[string][]*flow.Node{}
+	taken := map[string]bool{} // Mermaid shares one namespace for nodes and subgraphs
 	for _, n := range nodes {
 		in[n.In] = append(in[n.In], n)
+		taken[id(n.ID)] = true
 	}
 	var styles []string
 	loops := map[string]bool{}
@@ -85,6 +87,10 @@ func Mermaid(g *flow.Graph) []byte {
 			}
 			loops[n.ID] = true
 			sg := "L" + strings.TrimPrefix(id(n.ID), "l")
+			for taken[sg] { // an activity may be called L0
+				sg += "_"
+			}
+			taken[sg] = true
 			b.WriteString(pad + "subgraph " + sg + ` ["` + strings.ReplaceAll(n.Label, `"`, "#quot;") + "\"]\n")
 			b.WriteString(pad + "  " + id(n.ID) + `{{"↻"}}:::loop` + "\n")
 			emit(in[n.ID], depth+1)
