@@ -20,7 +20,8 @@ import (
 type Config struct {
 	StartLabel, EndLabel                  string
 	DecisionTrueLabel, DecisionFalseLabel string
-	// SignalSuccessLabel and SignalTimeoutLabel label signal waits (timetell-pas.9).
+	// SignalSuccessLabel and SignalTimeoutLabel label the two edges out of an
+	// AwaitWithTimeout whose ok an if tests.
 	SignalSuccessLabel, SignalTimeoutLabel string
 	// SplitNamesByWords splits camelCase activity (and, later, signal) names.
 	SplitNamesByWords bool
@@ -72,7 +73,8 @@ func Graph(dir string, cfg Config, patterns ...string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	words := flow.Labels{Start: cfg.StartLabel, End: cfg.EndLabel, Yes: cfg.DecisionTrueLabel, No: cfg.DecisionFalseLabel}
+	words := flow.Labels{Start: cfg.StartLabel, End: cfg.EndLabel, Yes: cfg.DecisionTrueLabel, No: cfg.DecisionFalseLabel,
+		Signaled: cfg.SignalSuccessLabel, Timeout: cfg.SignalTimeoutLabel}
 	opts := render.Options{Direction: cfg.Direction, SplitNamesByWords: cfg.SplitNamesByWords}
 	roots := discover.Discover(pkgs).Roots
 	if len(roots) == 0 { // packages.Load finds nothing, without error, outside a module or package
@@ -103,11 +105,17 @@ func Graph(dir string, cfg Config, patterns ...string) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
-// ponytail: counts decisions only; signal waits join the count with timetell-pas.9.
+// decisions counts decisions and the signal waits that branch.
 func decisions(g *flow.Graph) int {
+	out := map[string]int{}
+	for _, e := range g.Edges {
+		if !e.Back {
+			out[e.From]++
+		}
+	}
 	n := 0
 	for _, nd := range g.Nodes {
-		if nd.Kind == flow.Decision {
+		if nd.Kind == flow.Decision || nd.Kind == flow.Signal && out[nd.ID] > 1 {
 			n++
 		}
 	}
@@ -131,7 +139,7 @@ func paths(g *flow.Graph, max int) string {
 		var steps []string
 		for _, n := range p {
 			switch n.Kind {
-			case flow.Start, flow.End, flow.Activity, flow.LocalActivity, flow.Unknown:
+			case flow.Start, flow.End, flow.Activity, flow.LocalActivity, flow.Unknown, flow.Signal, flow.Timer:
 				steps = append(steps, n.Label)
 			}
 		}

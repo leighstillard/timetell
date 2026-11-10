@@ -3,12 +3,15 @@
 package flow
 
 import (
+	"cmp"
 	"fmt"
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"go/types"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/leighstillard/timetell/internal/discover"
 	"github.com/leighstillard/timetell/internal/load"
@@ -25,6 +28,8 @@ const (
 	Decision
 	Loop
 	Unknown // unresolved name or unsupported construct: [/?/]
+	Signal  // a signal wait: Receive, Await, AwaitWithTimeout
+	Timer   // Sleep, NewTimer
 )
 
 // Node is one vertex. Label is raw: the renderer splits and quotes it. In is
@@ -68,11 +73,12 @@ type frame struct {
 }
 
 // Labels are the words the walker writes into the graph: the Start and End
-// node labels and the edges out of an if decision.
-type Labels struct{ Start, End, Yes, No string }
+// node labels, the edges out of an if decision and out of an
+// AwaitWithTimeout whose ok an if tests.
+type Labels struct{ Start, End, Yes, No, Signaled, Timeout string }
 
 // DefaultLabels are Python's defaults.
-var DefaultLabels = Labels{Start: "Start", End: "End", Yes: "yes", No: "no"}
+var DefaultLabels = Labels{Start: "Start", End: "End", Yes: "yes", No: "no", Signaled: "Signaled", Timeout: "Timeout"}
 
 type walker struct {
 	g      *Graph
@@ -84,8 +90,10 @@ type walker struct {
 	seen   map[Edge]bool
 	fr     []exit // the frontier
 	frames []*frame
-	loops  []string // IDs of the drawn loops around the current statement
-	label  string   // label of the enclosing LabeledStmt, for the next frame
+	loops  []string                // IDs of the drawn loops around the current statement
+	label  string                  // label of the enclosing LabeledStmt, for the next frame
+	chans  map[types.Object]string // signal channel variable -> signal name
+	waits  map[types.Object]string // AwaitWithTimeout ok variable -> wait node ID
 }
 
 const directive = "//timetell:decision "
@@ -100,6 +108,8 @@ func Build(fn *discover.Func, l Labels) *Graph {
 		dirs:  map[int]string{},
 		ids:   map[string]int{},
 		seen:  map[Edge]bool{},
+		chans: map[types.Object]string{},
+		waits: map[types.Object]string{},
 	}
 	for _, f := range fn.Pkg.Syntax {
 		if f.Pos() <= fn.Decl.Pos() && fn.Decl.Pos() < f.End() {
@@ -139,7 +149,7 @@ func (w *walker) connect(fr []exit, to, label string, back bool) {
 
 // node creates a node, connects the frontier to it and makes it the
 // frontier. Activities are numbered per name (Name, Name_2); the rest per
-// kind prefix in source order (d0, l0, q0).
+// kind prefix in source order (d0, l0, q0, w0, t0).
 func (w *walker) node(k Kind, label string, p token.Pos) string {
 	var id string
 	switch k {
@@ -150,7 +160,7 @@ func (w *walker) node(k Kind, label string, p token.Pos) string {
 			id += "_" + strconv.Itoa(n)
 		}
 	default:
-		pre := map[Kind]string{Decision: "d", Loop: "l", Unknown: "q"}[k]
+		pre := map[Kind]string{Decision: "d", Loop: "l", Unknown: "q", Signal: "w", Timer: "t"}[k]
 		id = pre + strconv.Itoa(w.ids[pre])
 		w.ids[pre]++
 	}
@@ -224,8 +234,32 @@ func (w *walker) stmt(s ast.Stmt) {
 		if w.temporal(s, true) {
 			w.warn(s.Pos(), "native select statement with Temporal calls is not drawn (timetell-pas.27)")
 		}
-	default: // ExprStmt, AssignStmt, DeclStmt, IncDecStmt, SendStmt, EmptyStmt
+	case *ast.AssignStmt:
+		w.assign(s)
+	default: // ExprStmt, DeclStmt, IncDecStmt, SendStmt, EmptyStmt
 		w.scan(s)
+	}
+}
+
+// assign scans s and records the signal channels and AwaitWithTimeout
+// results it assigns to variables.
+// ponytail: var declarations are not tracked; add ValueSpec if fixtures use them.
+func (w *walker) assign(s *ast.AssignStmt) {
+	w.scan(s)
+	for i, r := range s.Rhs {
+		c, ok := ast.Unparen(r).(*ast.CallExpr)
+		id, _ := s.Lhs[min(i, len(s.Lhs)-1)].(*ast.Ident)
+		if !ok || id == nil || w.info.ObjectOf(id) == nil {
+			continue
+		}
+		switch load.Classify(w.info, c) {
+		case load.GetSignalChannel:
+			if name, ok := load.ConstString(w.info, c.Args[1]); ok {
+				w.chans[w.info.ObjectOf(id)] = name
+			}
+		case load.AwaitWithTimeout: // ok, err := ...: the last node is the wait
+			w.waits[w.info.ObjectOf(id)] = w.g.Nodes[len(w.g.Nodes)-1].ID
+		}
 	}
 }
 
@@ -311,15 +345,36 @@ func (w *walker) ifStmt(s *ast.IfStmt) {
 		w.stmts(s.Body.List) // identical arms: no decision
 		return
 	}
-	d := w.node(Decision, w.labelFor(s.Pos(), types.ExprString(s.Cond)), s.Pos())
-	w.fr = []exit{{d, w.words.Yes, false}}
+	d, yes, no := w.waitCond(s.Cond)
+	if d == "" {
+		d, yes, no = w.node(Decision, w.labelFor(s.Pos(), types.ExprString(s.Cond)), s.Pos()), w.words.Yes, w.words.No
+	}
+	w.fr = []exit{{d, yes, false}}
 	w.stmts(s.Body.List)
-	yes := w.fr
-	w.fr = []exit{{d, w.words.No, false}}
+	yesFr := w.fr
+	w.fr = []exit{{d, no, false}}
 	if s.Else != nil {
 		w.stmt(s.Else)
 	}
-	w.fr = append(yes, w.fr...)
+	w.fr = append(yesFr, w.fr...)
+}
+
+// waitCond returns the wait node whose ok result cond (ok or !ok) tests and
+// the labels of its two arms, when the frontier is that wait alone; else "".
+func (w *walker) waitCond(cond ast.Expr) (string, string, string) {
+	cond = ast.Unparen(cond)
+	yes, no := w.words.Signaled, w.words.Timeout
+	if u, ok := cond.(*ast.UnaryExpr); ok && u.Op == token.NOT {
+		cond, yes, no = ast.Unparen(u.X), no, yes
+	}
+	id, _ := cond.(*ast.Ident)
+	if id == nil {
+		return "", "", ""
+	}
+	if d := w.waits[w.info.ObjectOf(id)]; d != "" && len(w.fr) == 1 && w.fr[0] == (exit{from: d}) {
+		return d, yes, no
+	}
+	return "", "", ""
 }
 
 func (w *walker) switchStmt(s ast.Stmt, lbl string) {
@@ -423,7 +478,8 @@ func (w *walker) sameClauses(body *ast.BlockStmt) []ast.Stmt {
 // per statement if deep nesting shows up.
 func (w *walker) sig(list []ast.Stmt) string {
 	sub := &walker{g: &Graph{}, words: w.words, info: w.info, fset: w.fset, dirs: w.dirs,
-		ids: map[string]int{}, seen: map[Edge]bool{}, fr: []exit{{from: "x"}}}
+		ids: map[string]int{}, seen: map[Edge]bool{}, fr: []exit{{from: "x"}},
+		chans: w.chans, waits: map[types.Object]string{}}
 	for _, f := range w.frames {
 		sub.frames = append(sub.frames, &frame{label: f.label, loop: f.loop})
 	}
@@ -522,6 +578,33 @@ func (w *walker) scan(n ast.Node) {
 
 func (w *walker) call(c *ast.CallExpr) {
 	k := load.Classify(w.info, c)
+	switch k {
+	case load.Receive:
+		name := ""
+		if sel, ok := ast.Unparen(c.Fun).(*ast.SelectorExpr); ok {
+			name = w.signal(sel.X)
+		}
+		if name == "" {
+			w.warn(c.Pos(), "dynamic signal name")
+			w.node(Unknown, "?", c.Pos())
+			return
+		}
+		w.node(Signal, name, c.Pos())
+		return
+	case load.Await, load.AwaitWithTimeout: // label: directive, else the signal the condition reads
+		def := cmp.Or(w.signal(c.Args[len(c.Args)-1]), "wait")
+		w.node(Signal, w.labelFor(c.Pos(), def), c.Pos())
+		return
+	case load.Sleep, load.NewTimer:
+		label := "Timer"
+		if tv := w.info.Types[c.Args[1]]; tv.Value != nil {
+			if ns, ok := constant.Int64Val(tv.Value); ok {
+				label += " " + duration(time.Duration(ns))
+			}
+		}
+		w.node(Timer, label, c.Pos())
+		return
+	}
 	if k != load.ExecuteActivity && k != load.ExecuteLocalActivity || len(c.Args) < 2 {
 		return
 	}
@@ -536,6 +619,37 @@ func (w *walker) call(c *ast.CallExpr) {
 		kind = LocalActivity
 	}
 	w.node(kind, t.Name, c.Pos())
+}
+
+// signal is the constant name of the first signal channel n reads, else "".
+func (w *walker) signal(n ast.Node) (name string) {
+	ast.Inspect(n, func(x ast.Node) bool {
+		if name != "" { // Inspect still visits siblings; don't let them clear it
+			return false
+		}
+		switch x := x.(type) {
+		case *ast.Ident:
+			name = w.chans[w.info.ObjectOf(x)]
+		case *ast.CallExpr:
+			if load.Classify(w.info, x) == load.GetSignalChannel && len(x.Args) > 1 {
+				name, _ = load.ConstString(w.info, x.Args[1])
+			}
+		}
+		return name == ""
+	})
+	return name
+}
+
+// duration is d without zero trailing units: 24h, 1h30m, 1m30s.
+func duration(d time.Duration) string {
+	s := d.String()
+	if t, ok := strings.CutSuffix(s, "m0s"); ok {
+		s = t + "m"
+	}
+	if t, ok := strings.CutSuffix(s, "h0m"); ok {
+		s = t + "h"
+	}
+	return s
 }
 
 // silent are SDK calls that never draw anything by themselves.

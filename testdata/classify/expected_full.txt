@@ -4,16 +4,18 @@ Charge[Charge]
 Notify[Notify]
 Refund[Refund]
 q0[/?/]
+w0{{approve}}
 e((End))
 s --> Charge
 Charge --> Refund
 Refund --> Notify
 Notify --> q0
-q0 --> e
+q0 --> w0
+w0 --> e
 
 --- Execution Paths (1 total) ---
 
-Path 1: Start → Charge → Refund → Notify → ? → End
+Path 1: Start → Charge → Refund → Notify → ? → approve → End
 
 --- Validation Report ---
 Warnings: 1
