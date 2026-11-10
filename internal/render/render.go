@@ -11,10 +11,12 @@ import (
 )
 
 var (
-	camel  = regexp.MustCompile(`([a-z])([A-Z])`)
-	plain  = regexp.MustCompile(`^[A-Za-z0-9 _]*$`)
-	nonID  = regexp.MustCompile(`[^A-Za-z0-9_]`)
-	shapes = map[flow.Kind][2]string{
+	camel = regexp.MustCompile(`([a-z])([A-Z])`)
+	plain = regexp.MustCompile(`^[A-Za-z0-9 _]*$`)
+	nonID = regexp.MustCompile(`[^A-Za-z0-9_]`)
+	// edgeEsc escapes a quoted edge label; a backtick would start a Markdown string.
+	edgeEsc = strings.NewReplacer("#", "#35;", `"`, "#quot;", "`", "#96;")
+	shapes  = map[flow.Kind][2]string{
 		flow.Start: {"((", "))"}, flow.End: {"((", "))"},
 		flow.Activity: {"[", "]"}, flow.LocalActivity: {"[", "]"}, // ponytail: local drawn like activity until :::local styling is asked for
 		flow.Decision: {"{", "}"}, flow.Unknown: {"[/", "/]"}, // Loop: drawn by Mermaid as a subgraph
@@ -117,6 +119,12 @@ func Mermaid(g *flow.Graph) []byte {
 		}
 		arrow := " --> "
 		switch {
+		case l != "" && !plain.MatchString(l): // e.g. a case label holding "-->" or ".-"
+			arrow = " -->|"
+			if e.Back {
+				arrow = " -.->|"
+			}
+			arrow += `"` + edgeEsc.Replace(l) + `"| `
 		case e.Back && l != "":
 			arrow = " -. " + l + " .-> "
 		case e.Back:

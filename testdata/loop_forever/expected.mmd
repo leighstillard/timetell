@@ -14,7 +14,7 @@ l0 --> FetchJob
 FetchJob --> d0
 d0 -- no --> RunJob
 RunJob --> d1
-d1 -- continue-as-new --> e
+d1 -->|"continue-as-new"| e
 d1 -. no .-> l0
 d0 -- yes --> Finish
 Finish --> e
