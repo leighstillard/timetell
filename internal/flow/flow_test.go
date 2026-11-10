@@ -19,7 +19,7 @@ func build(t *testing.T, fixture string) map[string]*Graph {
 	}
 	gs := map[string]*Graph{}
 	for _, r := range discover.Discover(pkgs).Roots {
-		gs[r.Obj.Name()] = Build(r)
+		gs[r.Obj.Name()] = Build(r, DefaultLabels)
 	}
 	return gs
 }

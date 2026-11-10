@@ -1,0 +1,20 @@
+flowchart LR
+s((BEGIN))
+CurrencyConvert[Currency Convert]
+DepositFunds[Deposit Funds]
+NotifyATO[Notify ATO]
+TakeNonResidentTax[Take Non Resident Tax]
+WithdrawFunds[Withdraw Funds]
+d0{Need To Convert}
+d1{Is TFN Known}
+e((FINISH))
+s --> WithdrawFunds
+WithdrawFunds --> d0
+d0 -- Y --> CurrencyConvert
+CurrencyConvert --> d1
+d0 -- N --> d1
+d1 -- Y --> NotifyATO
+d1 -- N --> TakeNonResidentTax
+NotifyATO --> DepositFunds
+TakeNonResidentTax --> DepositFunds
+DepositFunds --> e

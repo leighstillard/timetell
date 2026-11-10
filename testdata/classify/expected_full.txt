@@ -1,0 +1,17 @@
+flowchart TD
+s((Start))
+Charge[Charge]
+Notify[Notify]
+Refund[Refund]
+q0[/?/]
+e((End))
+s --> Charge
+Charge --> Refund
+Refund --> Notify
+Notify --> q0
+q0 --> e
+
+--- Validation Report ---
+Warnings: 1
+
+classify/workflow.go:28:30: dynamic activity name

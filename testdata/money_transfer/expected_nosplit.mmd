@@ -1,0 +1,20 @@
+flowchart TD
+s((Start))
+CurrencyConvert[CurrencyConvert]
+DepositFunds[DepositFunds]
+NotifyATO[NotifyATO]
+TakeNonResidentTax[TakeNonResidentTax]
+WithdrawFunds[WithdrawFunds]
+d0{Need To Convert}
+d1{Is TFN Known}
+e((End))
+s --> WithdrawFunds
+WithdrawFunds --> d0
+d0 -- yes --> CurrencyConvert
+CurrencyConvert --> d1
+d0 -- no --> d1
+d1 -- yes --> NotifyATO
+d1 -- no --> TakeNonResidentTax
+NotifyATO --> DepositFunds
+TakeNonResidentTax --> DepositFunds
+DepositFunds --> e

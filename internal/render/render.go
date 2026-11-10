@@ -33,9 +33,21 @@ func id(s string) string {
 	return s
 }
 
-func label(n *flow.Node) string {
+// Options are the Config fields the renderer reads.
+type Options struct {
+	Direction string // TD or LR
+	// SplitNamesByWords splits camelCase activity names into words. Python
+	// splits decisions and signals instead; here decision labels are
+	// directive text or condition source, which splitting would mangle.
+	SplitNamesByWords bool
+}
+
+// Default is flowchart TD with split activity names.
+var Default = Options{Direction: "TD", SplitNamesByWords: true}
+
+func label(n *flow.Node, split bool) string {
 	l := n.Label
-	if n.Kind == flow.Activity || n.Kind == flow.LocalActivity {
+	if split && (n.Kind == flow.Activity || n.Kind == flow.LocalActivity) {
 		l = camel.ReplaceAllString(l, "$1 $2")
 	}
 	if n.Kind == flow.Unknown || plain.MatchString(l) {
@@ -56,12 +68,12 @@ const (
 
 var tints = [2]string{"#fffaf2", "#fde6c6"}
 
-// Mermaid renders g: flowchart TD, nodes (s first, the rest sorted by ID,
+// Mermaid renders g: flowchart in o.Direction, nodes (s first, the rest sorted by ID,
 // e last, each loop's nodes in its subgraph), then edges in builder order,
 // then loop styles.
-func Mermaid(g *flow.Graph) []byte {
+func Mermaid(g *flow.Graph, o Options) []byte {
 	var b strings.Builder
-	b.WriteString("flowchart TD\n")
+	b.WriteString("flowchart " + o.Direction + "\n")
 	nodes := slices.Clone(g.Nodes)
 	rank := func(n *flow.Node) int { return map[flow.Kind]int{flow.Start: -1, flow.End: 1}[n.Kind] }
 	slices.SortStableFunc(nodes, func(a, c *flow.Node) int {
@@ -84,7 +96,7 @@ func Mermaid(g *flow.Graph) []byte {
 		for _, n := range list {
 			if n.Kind != flow.Loop {
 				sh := shapes[n.Kind]
-				b.WriteString(pad + id(n.ID) + sh[0] + label(n) + sh[1] + "\n")
+				b.WriteString(pad + id(n.ID) + sh[0] + label(n, o.SplitNamesByWords) + sh[1] + "\n")
 				continue
 			}
 			loops[n.ID] = true
