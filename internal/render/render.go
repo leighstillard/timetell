@@ -4,6 +4,7 @@ package render
 import (
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/leighstillard/timetell/internal/flow"
@@ -16,7 +17,7 @@ var (
 	shapes = map[flow.Kind][2]string{
 		flow.Start: {"((", "))"}, flow.End: {"((", "))"},
 		flow.Activity: {"[", "]"}, flow.LocalActivity: {"[", "]"}, // ponytail: local drawn like activity until :::local styling is asked for
-		flow.Decision: {"{", "}"}, flow.Loop: {"([", "])"}, flow.Unknown: {"[/", "/]"},
+		flow.Decision: {"{", "}"}, flow.Unknown: {"[/", "/]"}, // Loop: drawn by Mermaid as a subgraph
 	}
 )
 
@@ -41,11 +42,24 @@ func label(n *flow.Node) string {
 	return `"` + strings.ReplaceAll(l, `"`, "#quot;") + `"`
 }
 
-// Mermaid renders g: flowchart LR, nodes (s first, the rest sorted by ID,
-// e last), then edges in builder order.
+// Loop styling ("style C", Leigh 2026-11-10): each loop body is a dashed,
+// tinted subgraph titled with the loop label; nested loops alternate tints.
+// doneColour marks a loop's 'done' exit: solid and thick, against the dotted
+// orange back edges.
+const (
+	loopColour = "#c77700"
+	doneColour = "#2e7d32"
+	loopClass  = "classDef loop fill:#fde7c8,stroke:" + loopColour + ",stroke-width:2px,color:#333\n"
+)
+
+var tints = [2]string{"#fffaf2", "#fde6c6"}
+
+// Mermaid renders g: flowchart TD, nodes (s first, the rest sorted by ID,
+// e last, each loop's nodes in its subgraph), then edges in builder order,
+// then loop styles.
 func Mermaid(g *flow.Graph) []byte {
 	var b strings.Builder
-	b.WriteString("flowchart LR\n")
+	b.WriteString("flowchart TD\n")
 	nodes := slices.Clone(g.Nodes)
 	rank := func(n *flow.Node) int { return map[flow.Kind]int{flow.Start: -1, flow.End: 1}[n.Kind] }
 	slices.SortStableFunc(nodes, func(a, c *flow.Node) int {
@@ -54,16 +68,72 @@ func Mermaid(g *flow.Graph) []byte {
 		}
 		return strings.Compare(id(a.ID), id(c.ID))
 	})
+	in := map[string][]*flow.Node{}
 	for _, n := range nodes {
-		sh := shapes[n.Kind]
-		b.WriteString(id(n.ID) + sh[0] + label(n) + sh[1] + "\n")
+		in[n.In] = append(in[n.In], n)
 	}
-	for _, e := range g.Edges {
+	var styles []string
+	loops := map[string]bool{}
+	var emit func(list []*flow.Node, depth int)
+	emit = func(list []*flow.Node, depth int) {
+		pad := strings.Repeat("  ", depth)
+		for _, n := range list {
+			if n.Kind != flow.Loop {
+				sh := shapes[n.Kind]
+				b.WriteString(pad + id(n.ID) + sh[0] + label(n) + sh[1] + "\n")
+				continue
+			}
+			loops[n.ID] = true
+			sg := "L" + strings.TrimPrefix(id(n.ID), "l")
+			b.WriteString(pad + "subgraph " + sg + ` ["` + strings.ReplaceAll(n.Label, `"`, "#quot;") + "\"]\n")
+			b.WriteString(pad + "  " + id(n.ID) + `{{"↻"}}:::loop` + "\n")
+			emit(in[n.ID], depth+1)
+			b.WriteString(pad + "end\n")
+			styles = append(styles, "style "+sg+" fill:"+tints[depth%2]+",stroke:"+loopColour+",stroke-dasharray:4,color:#333\n")
+		}
+	}
+	emit(in[""], 0)
+	var back, done, brk []string
+	for i, e := range g.Edges {
+		switch { // one style per edge; done wins, so an inner loop's exit stays green when it is also a back edge
+		case loops[e.From] && e.Label == "done":
+			done = append(done, strconv.Itoa(i))
+		case e.Back:
+			back = append(back, strconv.Itoa(i))
+		case e.Break:
+			brk = append(brk, strconv.Itoa(i))
+		}
+		l := e.Label
+		// Style C drops the walker's do/loop labels; only loop entries carry a
+		// bare "do" (a case label keeps its quotes).
+		if e.Back && l == "loop" || l == "do" {
+			l = ""
+		}
 		arrow := " --> "
-		if e.Label != "" {
-			arrow = " -- " + e.Label + " --> "
+		switch {
+		case e.Back && l != "":
+			arrow = " -. " + l + " .-> "
+		case e.Back:
+			arrow = " -.-> "
+		case l != "":
+			arrow = " -- " + l + " --> "
 		}
 		b.WriteString(id(e.From) + arrow + id(e.To) + "\n")
+	}
+	if len(styles) > 0 {
+		b.WriteString(loopClass)
+	}
+	if len(back) > 0 {
+		b.WriteString("linkStyle " + strings.Join(back, ",") + " stroke:" + loopColour + ",stroke-width:2px\n")
+	}
+	if len(done) > 0 {
+		b.WriteString("linkStyle " + strings.Join(done, ",") + " stroke:" + doneColour + ",stroke-width:3px\n")
+	}
+	if len(brk) > 0 { // break out of a loop: as thick as done, default colour
+		b.WriteString("linkStyle " + strings.Join(brk, ",") + " stroke:#333,stroke-width:3px\n")
+	}
+	for _, s := range styles {
+		b.WriteString(s)
 	}
 	return []byte(b.String())
 }

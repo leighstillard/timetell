@@ -1,18 +1,24 @@
-flowchart LR
+flowchart TD
 s((Start))
-FetchJob[Fetch Job]
 Finish[Finish]
-RunJob[Run Job]
-d0{done}
-d1{History Full}
-l0([forever])
+subgraph L0 ["forever"]
+  l0{{"↻"}}:::loop
+  FetchJob[Fetch Job]
+  RunJob[Run Job]
+  d0{done}
+  d1{History Full}
+end
 e((End))
 s --> l0
-l0 -- do --> FetchJob
+l0 --> FetchJob
 FetchJob --> d0
 d0 -- no --> RunJob
 RunJob --> d1
 d1 -- continue-as-new --> e
-d1 -- no --> l0
+d1 -. no .-> l0
 d0 -- yes --> Finish
 Finish --> e
+classDef loop fill:#fde7c8,stroke:#c77700,stroke-width:2px,color:#333
+linkStyle 6 stroke:#c77700,stroke-width:2px
+linkStyle 7 stroke:#333,stroke-width:3px
+style L0 fill:#fffaf2,stroke:#c77700,stroke-dasharray:4,color:#333

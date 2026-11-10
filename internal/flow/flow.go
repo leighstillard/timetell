@@ -27,19 +27,22 @@ const (
 	Unknown // unresolved name or unsupported construct: [/?/]
 )
 
-// Node is one vertex. Label is raw: the renderer splits and quotes it.
+// Node is one vertex. Label is raw: the renderer splits and quotes it. In is
+// the ID of the innermost loop around the node ("" at top level); a Loop
+// node's In is the loop around it, not itself.
 type Node struct {
 	ID    string
 	Kind  Kind
 	Label string
 	Pos   token.Position
+	In    string
 }
 
 // Edge is a directed edge. Back marks a loop's back edge, which path
-// counting skips.
+// counting skips. Break marks an edge that leaves a loop through break.
 type Edge struct {
 	From, To, Label string
-	Back            bool
+	Back, Break     bool
 }
 
 // Graph is one workflow. Nodes and Edges are in creation order.
@@ -50,8 +53,12 @@ type Graph struct {
 	Warnings []load.Warning
 }
 
-// exit is a dangling edge: from a node, with the label its next edge carries.
-type exit struct{ from, label string }
+// exit is a dangling edge: from a node, with the label its next edge carries;
+// brk if it left a loop through break.
+type exit struct {
+	from, label string
+	brk         bool
+}
 
 // frame is a breakable statement (loop, switch) on the walk stack.
 type frame struct {
@@ -69,7 +76,8 @@ type walker struct {
 	seen   map[Edge]bool
 	fr     []exit // the frontier
 	frames []*frame
-	label  string // label of the enclosing LabeledStmt, for the next frame
+	loops  []string // IDs of the drawn loops around the current statement
+	label  string   // label of the enclosing LabeledStmt, for the next frame
 }
 
 const directive = "//timetell:decision "
@@ -109,7 +117,7 @@ func (w *walker) warn(p token.Pos, msg string) {
 
 func (w *walker) connect(fr []exit, to, label string, back bool) {
 	for _, x := range fr {
-		e := Edge{From: x.from, To: to, Label: x.label, Back: back}
+		e := Edge{From: x.from, To: to, Label: x.label, Back: back, Break: x.brk}
 		if label != "" {
 			e.Label = label
 		}
@@ -137,7 +145,11 @@ func (w *walker) node(k Kind, label string, p token.Pos) string {
 		id = pre + strconv.Itoa(w.ids[pre])
 		w.ids[pre]++
 	}
-	w.g.Nodes = append(w.g.Nodes, &Node{ID: id, Kind: k, Label: label, Pos: w.fset.Position(p)})
+	n := &Node{ID: id, Kind: k, Label: label, Pos: w.fset.Position(p)}
+	if len(w.loops) > 0 {
+		n.In = w.loops[len(w.loops)-1]
+	}
+	w.g.Nodes = append(w.g.Nodes, n)
 	w.connect(w.fr, id, "", false)
 	w.fr = []exit{{from: id}}
 	return id
@@ -221,7 +233,10 @@ func (w *walker) branch(s *ast.BranchStmt) {
 				continue
 			}
 			if s.Tok == token.BREAK {
-				f.brk = append(f.brk, w.fr...)
+				for _, x := range w.fr {
+					x.brk = x.brk || f.loop
+					f.brk = append(f.brk, x)
+				}
 			} else {
 				f.cont = append(f.cont, w.fr...)
 			}
@@ -264,7 +279,7 @@ func (w *walker) ifStmt(s *ast.IfStmt) {
 			start := w.fr
 			w.fr = nil
 			for _, x := range start {
-				w.fr = append(w.fr, exit{x.from, "error"})
+				w.fr = append(w.fr, exit{x.from, "error", x.brk})
 			}
 			w.stmts(s.Body.List)
 			errFr := w.fr
@@ -288,10 +303,10 @@ func (w *walker) ifStmt(s *ast.IfStmt) {
 		return
 	}
 	d := w.node(Decision, w.labelFor(s.Pos(), types.ExprString(s.Cond)), s.Pos())
-	w.fr = []exit{{d, "yes"}}
+	w.fr = []exit{{d, "yes", false}}
 	w.stmts(s.Body.List)
 	yes := w.fr
-	w.fr = []exit{{d, "no"}}
+	w.fr = []exit{{d, "no", false}}
 	if s.Else != nil {
 		w.stmt(s.Else)
 	}
@@ -339,7 +354,7 @@ func (w *walker) switchStmt(s ast.Stmt, lbl string) {
 	}
 	d := w.node(Decision, w.labelFor(s.Pos(), tag), s.Pos())
 	var out, carry []exit
-	other := []exit{{d, "other"}}
+	other := []exit{{d, "other", false}}
 	for _, c := range body.List {
 		cc := c.(*ast.CaseClause)
 		label := "default"
@@ -352,7 +367,7 @@ func (w *walker) switchStmt(s ast.Stmt, lbl string) {
 			}
 			label = strings.Join(cases, ", ")
 		}
-		w.fr = append([]exit{{d, label}}, carry...)
+		w.fr = append([]exit{{d, label, false}}, carry...)
 		w.stmts(cc.Body)
 		carry = nil
 		if n := len(cc.Body); n > 0 {
@@ -449,12 +464,14 @@ func (w *walker) loop(s ast.Stmt, lbl string) {
 		return
 	}
 	l := w.node(Loop, w.labelFor(s.Pos(), label), s.Pos())
-	w.fr = []exit{{l, "do"}}
+	w.fr = []exit{{l, "do", false}}
+	w.loops = append(w.loops, l)
 	w.stmts(body.List)
 	w.fr = append(w.fr, f.cont...)
 	if post != nil {
 		w.stmt(post)
 	}
+	w.loops = w.loops[:len(w.loops)-1]
 	for _, x := range w.fr {
 		if x.label == "" {
 			x.label = "loop"
@@ -463,7 +480,7 @@ func (w *walker) loop(s ast.Stmt, lbl string) {
 	}
 	w.fr = nil
 	if !forever {
-		w.fr = []exit{{l, "done"}}
+		w.fr = []exit{{l, "done", false}}
 	}
 	w.fr = append(w.fr, f.brk...)
 }

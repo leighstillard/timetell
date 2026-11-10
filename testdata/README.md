@@ -15,6 +15,7 @@ A separate module (`go.temporal.io/sdk` v1.50.0), so the root module never impor
 | loop_retry | `for` with a condition, `break` on success | .5 (terminates), .14 |
 | loop_range | `for _, item := range items` | .14 |
 | loop_forever | `for {}` with `break` and a continue-as-new return | .14 |
+| loop_nested | retry loop (directive-labelled) inside a `range`: nested style C subgraphs | .14 |
 | selector_signal_timer | `Selector` with `AddReceive` + `AddFuture(timer)` | .15 |
 | selector_loop | `Selector` inside `for {}` | .14, .15 |
 | helper_split | activities in unexported helpers taking `workflow.Context` | .18 |

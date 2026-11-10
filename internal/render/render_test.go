@@ -1,6 +1,7 @@
 package render
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/leighstillard/timetell/internal/discover"
@@ -13,7 +14,7 @@ import (
 // rest of testdata/.
 func TestGolden(t *testing.T) {
 	for _, fx := range []string{"trivial", "simple_linear", "money_transfer", "saga_compensation",
-		"repeated_activity", "loop_retry", "loop_range", "loop_forever"} {
+		"repeated_activity", "loop_retry", "loop_range", "loop_forever", "loop_nested"} {
 		t.Run(fx, func(t *testing.T) {
 			pkgs, err := load.Load("../../testdata", "./"+fx)
 			if err != nil {
@@ -41,5 +42,18 @@ func TestLabelAndID(t *testing.T) {
 	}
 	if id("my-activity") != "my_activity" || id("end") != "end_" {
 		t.Errorf("id sanitising")
+	}
+}
+
+// An inner loop's done edge that returns to the outer loop is a back edge
+// too: it gets the done style only.
+func TestDoneBackEdge(t *testing.T) {
+	g := &flow.Graph{
+		Nodes: []*flow.Node{{ID: "l0", Kind: flow.Loop, Label: "outer"}, {ID: "l1", Kind: flow.Loop, Label: "inner", In: "l0"}},
+		Edges: []flow.Edge{{From: "l0", To: "l1", Label: "do"}, {From: "l1", To: "l0", Label: "done", Back: true}},
+	}
+	out := string(Mermaid(g))
+	if !strings.Contains(out, "l1 -. done .-> l0\n") || !strings.Contains(out, "linkStyle 1 stroke:#2e7d32") || strings.Contains(out, "linkStyle 1 stroke:#c77700") {
+		t.Errorf("done back edge styling:\n%s", out)
 	}
 }
