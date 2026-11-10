@@ -65,6 +65,8 @@ func TestConfigErrors(t *testing.T) {
 		func(c *Config) { c.DecisionFalseLabel = "" },
 		func(c *Config) { c.OutputFormat = "json" },
 		func(c *Config) { c.MaxPaths = -1 },
+		func(c *Config) { c.DecisionTrueLabel = "do" },
+		func(c *Config) { c.DecisionFalseLabel = "loop" },
 	} {
 		cfg := DefaultConfig()
 		mut(&cfg)
@@ -82,6 +84,19 @@ func TestNoWorkflows(t *testing.T) {
 	}
 	if _, err := Graph(dir, DefaultConfig(), "./..."); err == nil {
 		t.Error("no error")
+	}
+}
+
+// Two packages define OrderWorkflow; ties sort by package path.
+func TestRootOrderStable(t *testing.T) {
+	first, err := Graph("testdata", DefaultConfig(), "./parent_child", "./signal_flow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 20 {
+		if out, _ := Graph("testdata", DefaultConfig(), "./parent_child", "./signal_flow"); string(out) != string(first) {
+			t.Fatal("output order changed between runs")
+		}
 	}
 }
 

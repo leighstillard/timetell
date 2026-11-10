@@ -17,19 +17,26 @@ func (g *Graph) Paths(max int) (*big.Int, [][]*Node) {
 		}
 	}
 	// A back edge ends the one iteration: it continues to the loop's exits,
-	// the head's out-edges that leave the body. A forever loop has none.
-	exits := map[string][]string{}
-	for _, e := range g.Edges {
-		if e.Back {
-			for _, to := range out[e.To] {
-				if byID[to].In != e.To {
-					exits[e.From] = append(exits[e.From], to)
-				}
+	// the head's out-edges that leave the body. A forever loop has none. An
+	// inner loop that ends an outer body exits by the outer back edge, so
+	// its exits are the outer loop's.
+	var exits func(l string) []string
+	exits = func(l string) (x []string) {
+		for _, e := range g.Edges { // ponytail: O(E) per back edge and nesting level; fine at workflow size
+			switch {
+			case e.From != l:
+			case !e.Back && byID[e.To].In != l:
+				x = append(x, e.To)
+			case e.Back && e.To != l:
+				x = append(x, exits(e.To)...)
 			}
 		}
+		return x
 	}
-	for from, tos := range exits {
-		out[from] = append(out[from], tos...)
+	for _, e := range g.Edges {
+		if e.Back {
+			out[e.From] = append(out[e.From], exits(e.To)...)
+		}
 	}
 	memo := map[string]*big.Int{}
 	var count func(string) *big.Int

@@ -3,6 +3,7 @@
 package discover
 
 import (
+	"cmp"
 	"go/ast"
 	"go/types"
 	"slices"
@@ -92,7 +93,9 @@ func Discover(pkgs []*packages.Package) *Index {
 			ix.Signals[obj] = receivedSignals(fn)
 		}
 	}
-	slices.SortFunc(ix.Roots, func(a, b *Func) int { return strings.Compare(a.Obj.Name(), b.Obj.Name()) })
+	slices.SortFunc(ix.Roots, func(a, b *Func) int {
+		return cmp.Or(strings.Compare(a.Obj.Name(), b.Obj.Name()), strings.Compare(a.Pkg.PkgPath, b.Pkg.PkgPath))
+	})
 	for obj := range acts {
 		ix.Activities = append(ix.Activities, obj)
 	}
