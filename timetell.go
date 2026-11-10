@@ -53,6 +53,9 @@ func Graph(dir string, cfg Config, patterns ...string) ([]byte, error) {
 	case slices.Contains([]string{cfg.StartLabel, cfg.EndLabel, cfg.DecisionTrueLabel, cfg.DecisionFalseLabel,
 		cfg.SignalSuccessLabel, cfg.SignalTimeoutLabel}, ""):
 		return nil, fmt.Errorf("labels must not be empty (Mermaid cannot parse an empty label)")
+	case slices.ContainsFunc([]string{cfg.DecisionTrueLabel, cfg.DecisionFalseLabel, cfg.SignalSuccessLabel, cfg.SignalTimeoutLabel},
+		func(l string) bool { return l == "do" || l == "loop" }):
+		return nil, fmt.Errorf(`edge labels "do" and "loop" are reserved for loop edges`)
 	case cfg.MaxPaths < 0:
 		return nil, fmt.Errorf("MaxPaths %d: want 0 or more", cfg.MaxPaths)
 	case cfg.OutputFormat != "mermaid" && cfg.OutputFormat != "paths" && cfg.OutputFormat != "full":

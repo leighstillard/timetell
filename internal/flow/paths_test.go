@@ -42,3 +42,16 @@ func TestPathsLoops(t *testing.T) {
 		}
 	}
 }
+
+// An inner loop that ends the outer body leaves by an outer back edge:
+// outer 0 times, outer 1 with inner 0, outer 1 with inner 1.
+func TestPathsTailNestedLoop(t *testing.T) {
+	g := &Graph{
+		Nodes: []*Node{{ID: "s"}, {ID: "l0", Kind: Loop}, {ID: "l1", Kind: Loop, In: "l0"}, {ID: "A", Kind: Activity, In: "l1"}, {ID: "e"}},
+		Edges: []Edge{{From: "s", To: "l0"}, {From: "l0", To: "l1"}, {From: "l1", To: "A"},
+			{From: "A", To: "l1", Back: true}, {From: "l1", To: "l0", Back: true}, {From: "l0", To: "e"}},
+	}
+	if total, list := g.Paths(10); total.Int64() != 3 || len(list) != 3 {
+		t.Errorf("total %s, listed %d; want 3", total, len(list))
+	}
+}
