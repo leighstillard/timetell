@@ -45,16 +45,22 @@ func TestLabelAndID(t *testing.T) {
 	}
 }
 
-// An inner loop's done edge that returns to the outer loop is a back edge
-// too: it gets the done style only.
-func TestDoneBackEdge(t *testing.T) {
+// An inner loop's done or break edge that returns to the outer loop is a
+// back edge too: it gets the exit style only.
+func TestExitBackEdge(t *testing.T) {
 	g := &flow.Graph{
-		Nodes: []*flow.Node{{ID: "l0", Kind: flow.Loop, Label: "outer"}, {ID: "l1", Kind: flow.Loop, Label: "inner", In: "l0"}},
-		Edges: []flow.Edge{{From: "l0", To: "l1", Label: "do"}, {From: "l1", To: "l0", Label: "done", Back: true}},
+		Nodes: []*flow.Node{{ID: "l0", Kind: flow.Loop, Label: "outer"}, {ID: "l1", Kind: flow.Loop, Label: "inner", In: "l0"}, {ID: "A", Kind: flow.Activity, Label: "A", In: "l1"}},
+		Edges: []flow.Edge{{From: "l0", To: "l1", Label: "do"}, {From: "l1", To: "l0", Label: "done", Back: true},
+			{From: "l1", To: "A", Label: "do"}, {From: "A", To: "l0", Back: true, Break: true}},
 	}
 	out := string(Mermaid(g))
-	if !strings.Contains(out, "l1 -. done .-> l0\n") || !strings.Contains(out, "linkStyle 1 stroke:#2e7d32") || strings.Contains(out, "linkStyle 1 stroke:#c77700") {
-		t.Errorf("done back edge styling:\n%s", out)
+	for _, want := range []string{"l1 -. done .-> l0\n", "A -.-> l0\n", "linkStyle 1 stroke:#2e7d32", "linkStyle 3 stroke:#333"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "linkStyle 1,") || strings.Contains(out, "linkStyle 3 stroke:#c77700") {
+		t.Errorf("exit edge also styled as back edge:\n%s", out)
 	}
 }
 
