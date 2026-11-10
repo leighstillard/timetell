@@ -62,8 +62,7 @@ func goldenEdges(t *testing.T, fixture string) []string {
 // Single-workflow fixtures whose shape only needs this builder: edges must
 // match expected.mmd exactly, in order.
 func TestFixtureEdges(t *testing.T) {
-	for _, fx := range []string{"simple_linear", "money_transfer", "saga_compensation", "repeated_activity",
-		"loop_retry", "loop_range", "loop_forever"} {
+	for _, fx := range []string{"simple_linear", "money_transfer", "saga_compensation", "repeated_activity"} {
 		t.Run(fx, func(t *testing.T) {
 			gs := build(t, fx)
 			if len(gs) != 1 {

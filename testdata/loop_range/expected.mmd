@@ -1,11 +1,17 @@
-flowchart LR
+flowchart TD
 s((Start))
-ProcessItem[Process Item]
 Summarize[Summarize]
-l0([each item in items])
+subgraph L0 ["each item in items"]
+  l0{{"↻"}}:::loop
+  ProcessItem[Process Item]
+end
 e((End))
 s --> l0
-l0 -- do --> ProcessItem
-ProcessItem -- loop --> l0
+l0 --> ProcessItem
+ProcessItem -.-> l0
 l0 -- done --> Summarize
 Summarize --> e
+classDef loop fill:#fde7c8,stroke:#c77700,stroke-width:2px,color:#333
+linkStyle 2 stroke:#c77700,stroke-width:2px
+linkStyle 3 stroke:#2e7d32,stroke-width:3px
+style L0 fill:#fffaf2,stroke:#c77700,stroke-dasharray:4,color:#333
