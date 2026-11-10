@@ -101,13 +101,13 @@ func Mermaid(g *flow.Graph) []byte {
 	emit(in[""], 0)
 	var back, done, brk []string
 	for i, e := range g.Edges {
-		switch { // one style per edge; done wins, so an inner loop's exit stays green when it is also a back edge
+		switch { // one style per edge; an inner loop's done or break that is also an outer back edge keeps its exit style
 		case loops[e.From] && e.Label == "done":
 			done = append(done, strconv.Itoa(i))
-		case e.Back:
-			back = append(back, strconv.Itoa(i))
 		case e.Break:
 			brk = append(brk, strconv.Itoa(i))
+		case e.Back:
+			back = append(back, strconv.Itoa(i))
 		}
 		l := e.Label
 		// Style C drops the walker's do/loop labels; only loop entries carry a
