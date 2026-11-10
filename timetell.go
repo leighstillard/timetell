@@ -29,6 +29,7 @@ type Config struct {
 	MaxPaths          int    // caps the listed paths, not the count
 	Direction         string // TD (default) or LR
 	OutputFormat      string // mermaid, paths or full
+	Workflow          string // graph only the root of this name; "" = all
 }
 
 // DefaultConfig is Python's defaults, except Direction TD.
@@ -71,6 +72,12 @@ func Graph(dir string, cfg Config, patterns ...string) ([]byte, error) {
 	words := flow.Labels{Start: cfg.StartLabel, End: cfg.EndLabel, Yes: cfg.DecisionTrueLabel, No: cfg.DecisionFalseLabel}
 	opts := render.Options{Direction: cfg.Direction, SplitNamesByWords: cfg.SplitNamesByWords}
 	roots := discover.Discover(pkgs).Roots
+	if cfg.Workflow != "" {
+		roots = slices.DeleteFunc(roots, func(r *discover.Func) bool { return r.Obj.Name() != cfg.Workflow })
+		if len(roots) == 0 {
+			return nil, fmt.Errorf("no root workflow named %q", cfg.Workflow)
+		}
+	}
 	var b strings.Builder
 	for _, r := range roots {
 		g := flow.Build(r, words)
