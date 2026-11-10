@@ -4,6 +4,7 @@ package timetell
 import (
 	"fmt"
 	"go/token"
+	"math/big"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -25,6 +26,7 @@ type Config struct {
 	SplitNamesByWords bool
 	// MaxDecisionPoints: more decisions than this in one workflow is a warning.
 	MaxDecisionPoints int
+	MaxPaths          int    // caps the listed paths, not the count
 	Direction         string // TD (default) or LR
 	OutputFormat      string // mermaid, paths or full
 }
@@ -35,7 +37,7 @@ func DefaultConfig() Config {
 		StartLabel: "Start", EndLabel: "End",
 		DecisionTrueLabel: "yes", DecisionFalseLabel: "no",
 		SignalSuccessLabel: "Signaled", SignalTimeoutLabel: "Timeout",
-		SplitNamesByWords: true, MaxDecisionPoints: 10,
+		SplitNamesByWords: true, MaxDecisionPoints: 10, MaxPaths: 1024,
 		Direction: "TD", OutputFormat: "mermaid",
 	}
 }
@@ -50,9 +52,9 @@ func Graph(dir string, cfg Config, patterns ...string) ([]byte, error) {
 	case slices.Contains([]string{cfg.StartLabel, cfg.EndLabel, cfg.DecisionTrueLabel, cfg.DecisionFalseLabel,
 		cfg.SignalSuccessLabel, cfg.SignalTimeoutLabel}, ""):
 		return nil, fmt.Errorf("labels must not be empty (Mermaid cannot parse an empty label)")
-	case cfg.OutputFormat == "paths":
-		return nil, fmt.Errorf("OutputFormat paths is not implemented yet (timetell-pas.8)")
-	case cfg.OutputFormat != "mermaid" && cfg.OutputFormat != "full":
+	case cfg.MaxPaths < 0:
+		return nil, fmt.Errorf("MaxPaths %d: want 0 or more", cfg.MaxPaths)
+	case cfg.OutputFormat != "mermaid" && cfg.OutputFormat != "paths" && cfg.OutputFormat != "full":
 		return nil, fmt.Errorf("OutputFormat %q: want mermaid, paths or full", cfg.OutputFormat)
 	}
 	pkgs, err := load.Load(dir, patterns...)
@@ -75,7 +77,12 @@ func Graph(dir string, cfg Config, patterns ...string) ([]byte, error) {
 		if len(roots) > 1 {
 			b.WriteString("%% " + g.Workflow + "\n")
 		}
-		b.Write(render.Mermaid(g, opts))
+		if cfg.OutputFormat != "paths" {
+			b.Write(render.Mermaid(g, opts))
+		}
+		if cfg.OutputFormat != "mermaid" {
+			b.WriteString(paths(g, cfg.MaxPaths))
+		}
 		if cfg.OutputFormat == "full" {
 			b.WriteString(report(g, r, cfg.MaxDecisionPoints, abs))
 		}
@@ -83,17 +90,47 @@ func Graph(dir string, cfg Config, patterns ...string) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
-// report is the validation report for g, empty when there are no warnings.
-func report(g *flow.Graph, r *discover.Func, max int, dir string) string {
-	ws := g.Warnings
+// ponytail: counts decisions only; signal waits join the count with timetell-pas.9.
+func decisions(g *flow.Graph) int {
 	n := 0
 	for _, nd := range g.Nodes {
 		if nd.Kind == flow.Decision {
 			n++
 		}
 	}
-	// ponytail: counts decisions only; signal waits join the count with timetell-pas.9.
-	if n > max {
+	return n
+}
+
+// paths is Python's path list: Start, the activities in order, End. Python's
+// "(2^n = N paths)" is dropped: the count here follows the structure, not 2^n.
+func paths(g *flow.Graph, max int) string {
+	total, list := g.Paths(max)
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n--- Execution Paths (%s total) ---\n", total)
+	if n := decisions(g); n > 0 {
+		fmt.Fprintf(&b, "Decision Points: %d\n", n)
+	}
+	if total.Cmp(big.NewInt(int64(len(list)))) > 0 {
+		fmt.Fprintf(&b, "Listing the first %d (MaxPaths)\n", len(list))
+	}
+	b.WriteString("\n")
+	for i, p := range list {
+		var steps []string
+		for _, n := range p {
+			switch n.Kind {
+			case flow.Start, flow.End, flow.Activity, flow.LocalActivity, flow.Unknown:
+				steps = append(steps, n.Label)
+			}
+		}
+		fmt.Fprintf(&b, "Path %d: %s\n", i+1, strings.Join(steps, " → "))
+	}
+	return b.String()
+}
+
+// report is the validation report for g, empty when there are no warnings.
+func report(g *flow.Graph, r *discover.Func, max int, dir string) string {
+	ws := g.Warnings
+	if n := decisions(g); n > max {
 		ws = append(ws, load.Warning{Pos: r.Pkg.Fset.Position(r.Decl.Pos()),
 			Msg: fmt.Sprintf("%d decision points, more than MaxDecisionPoints (%d)", n, max)})
 	}

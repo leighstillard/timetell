@@ -6,7 +6,7 @@ A separate module (`go.temporal.io/sdk` v1.50.0), so the root module never impor
 |---|---|---|
 | trivial | Start → End, no Temporal calls | .1 |
 | simple_linear | linear activities, `if err := …; err != nil { return err }` not drawn | .5, .6 |
-| money_transfer | two `//timetell:decision` decisions, reconvergence, error check after every activity (port). Also `expected_labels.mmd` (custom labels, LR) and `expected_nosplit.mmd` (`SplitNamesByWords` false) | .5, .6, .7 |
+| money_transfer | two `//timetell:decision` decisions, reconvergence, error check after every activity (port). Also `expected_labels.mmd` (custom labels, LR), `expected_nosplit.mmd` (`SplitNamesByWords` false), `expected_full.txt`, `expected_paths.txt` and `expected_paths_capped.txt` (`MaxPaths` 2) | .5, .6, .7, .8 |
 | approval | `AwaitWithTimeout` whose `ok` feeds an `if`: Signaled/Timeout (port of signal_workflow) | .9 |
 | parent_child | `ExecuteChildWorkflow`, reference mode; two roots (port) | .10 |
 | signal_flow | `SignalExternalWorkflow` and `GetSignalChannel().Receive` across three workflows (port) | .9, .12 |
@@ -15,7 +15,7 @@ A separate module (`go.temporal.io/sdk` v1.50.0), so the root module never impor
 | loop_retry | `for` with a condition, `break` on success | .5 (terminates), .14 |
 | loop_range | `for _, item := range items` | .14 |
 | loop_forever | `for {}` with `break` and a continue-as-new return | .14 |
-| loop_nested | retry loop (directive-labelled) inside a `range`: nested style C subgraphs | .14 |
+| loop_nested | retry loop (directive-labelled) inside a `range`: nested style C subgraphs. `expected_paths.txt`: 0 or 1 iteration per loop | .14, .8 |
 | selector_signal_timer | `Selector` with `AddReceive` + `AddFuture(timer)` | .15 |
 | selector_loop | `Selector` inside `for {}` | .14, .15 |
 | helper_split | activities in unexported helpers taking `workflow.Context` | .18 |

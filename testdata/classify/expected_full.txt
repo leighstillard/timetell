@@ -11,6 +11,10 @@ Refund --> Notify
 Notify --> q0
 q0 --> e
 
+--- Execution Paths (1 total) ---
+
+Path 1: Start → Charge → Refund → Notify → ? → End
+
 --- Validation Report ---
 Warnings: 1
 

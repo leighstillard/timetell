@@ -16,6 +16,10 @@ func TestGraphGolden(t *testing.T) {
 	nosplit.SplitNamesByWords = false
 	full := DefaultConfig()
 	full.OutputFormat = "full"
+	paths := DefaultConfig()
+	paths.OutputFormat = "paths"
+	capped := paths
+	capped.MaxPaths = 2
 	for _, c := range []struct {
 		fixture, golden string
 		cfg             Config
@@ -23,7 +27,10 @@ func TestGraphGolden(t *testing.T) {
 		{"money_transfer", "expected.mmd", DefaultConfig()}, // defaults match the renderer's goldens
 		{"money_transfer", "expected_labels.mmd", custom},
 		{"money_transfer", "expected_nosplit.mmd", nosplit},
-		{"money_transfer", "expected.mmd", full}, // no warnings: no report
+		{"money_transfer", "expected_full.txt", full}, // no warnings: no report
+		{"money_transfer", "expected_paths.txt", paths},
+		{"money_transfer", "expected_paths_capped.txt", capped},
+		{"loop_nested", "expected_paths.txt", paths},
 		{"classify", "expected_full.txt", full},
 	} {
 		t.Run(c.fixture+"/"+c.golden, func(t *testing.T) {
@@ -55,7 +62,7 @@ func TestConfigErrors(t *testing.T) {
 		func(c *Config) { c.StartLabel = "" },
 		func(c *Config) { c.DecisionFalseLabel = "" },
 		func(c *Config) { c.OutputFormat = "json" },
-		func(c *Config) { c.OutputFormat = "paths" },
+		func(c *Config) { c.MaxPaths = -1 },
 	} {
 		cfg := DefaultConfig()
 		mut(&cfg)
