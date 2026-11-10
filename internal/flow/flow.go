@@ -67,8 +67,16 @@ type frame struct {
 	brk, cont []exit
 }
 
+// Labels are the words the walker writes into the graph: the Start and End
+// node labels and the edges out of an if decision.
+type Labels struct{ Start, End, Yes, No string }
+
+// DefaultLabels are Python's defaults.
+var DefaultLabels = Labels{Start: "Start", End: "End", Yes: "yes", No: "no"}
+
 type walker struct {
 	g      *Graph
+	words  Labels
 	info   *types.Info
 	fset   *token.FileSet
 	dirs   map[int]string // line -> //timetell:decision label
@@ -83,14 +91,15 @@ type walker struct {
 const directive = "//timetell:decision "
 
 // Build walks fn's body into a Graph.
-func Build(fn *discover.Func) *Graph {
+func Build(fn *discover.Func, l Labels) *Graph {
 	w := &walker{
-		g:    &Graph{Workflow: fn.Obj.Name()},
-		info: fn.Pkg.TypesInfo,
-		fset: fn.Pkg.Fset,
-		dirs: map[int]string{},
-		ids:  map[string]int{},
-		seen: map[Edge]bool{},
+		g:     &Graph{Workflow: fn.Obj.Name()},
+		words: l,
+		info:  fn.Pkg.TypesInfo,
+		fset:  fn.Pkg.Fset,
+		dirs:  map[int]string{},
+		ids:   map[string]int{},
+		seen:  map[Edge]bool{},
 	}
 	for _, f := range fn.Pkg.Syntax {
 		if f.Pos() <= fn.Decl.Pos() && fn.Decl.Pos() < f.End() {
@@ -103,11 +112,11 @@ func Build(fn *discover.Func) *Graph {
 			}
 		}
 	}
-	w.g.Nodes = append(w.g.Nodes, &Node{ID: "s", Kind: Start, Label: "Start"})
+	w.g.Nodes = append(w.g.Nodes, &Node{ID: "s", Kind: Start, Label: w.words.Start})
 	w.fr = []exit{{from: "s"}}
 	w.stmts(fn.Decl.Body.List)
 	w.connect(w.fr, "e", "", false)
-	w.g.Nodes = append(w.g.Nodes, &Node{ID: "e", Kind: End, Label: "End"})
+	w.g.Nodes = append(w.g.Nodes, &Node{ID: "e", Kind: End, Label: w.words.End})
 	return w.g
 }
 
@@ -303,10 +312,10 @@ func (w *walker) ifStmt(s *ast.IfStmt) {
 		return
 	}
 	d := w.node(Decision, w.labelFor(s.Pos(), types.ExprString(s.Cond)), s.Pos())
-	w.fr = []exit{{d, "yes", false}}
+	w.fr = []exit{{d, w.words.Yes, false}}
 	w.stmts(s.Body.List)
 	yes := w.fr
-	w.fr = []exit{{d, "no", false}}
+	w.fr = []exit{{d, w.words.No, false}}
 	if s.Else != nil {
 		w.stmt(s.Else)
 	}
@@ -413,7 +422,7 @@ func (w *walker) sameClauses(body *ast.BlockStmt) []ast.Stmt {
 // ponytail: re-walks arms, so nested if/else costs 3^depth walks; memoise
 // per statement if deep nesting shows up.
 func (w *walker) sig(list []ast.Stmt) string {
-	sub := &walker{g: &Graph{}, info: w.info, fset: w.fset, dirs: w.dirs,
+	sub := &walker{g: &Graph{}, words: w.words, info: w.info, fset: w.fset, dirs: w.dirs,
 		ids: map[string]int{}, seen: map[Edge]bool{}, fr: []exit{{from: "x"}}}
 	for _, f := range w.frames {
 		sub.frames = append(sub.frames, &frame{label: f.label, loop: f.loop})

@@ -24,7 +24,7 @@ func TestGolden(t *testing.T) {
 			if len(roots) != 1 {
 				t.Fatalf("%d roots", len(roots))
 			}
-			golden.Check(t, "../../testdata/"+fx+"/expected.mmd", Mermaid(flow.Build(roots[0])))
+			golden.Check(t, "../../testdata/"+fx+"/expected.mmd", Mermaid(flow.Build(roots[0], flow.DefaultLabels), Default))
 		})
 	}
 }
@@ -33,11 +33,11 @@ func TestLabelAndID(t *testing.T) {
 	for _, c := range []struct{ in, want string }{
 		{"NotifyATO", "Notify ATO"}, {"Requires3DS", "Requires3DS"}, {"my-activity", `"my-activity"`},
 	} {
-		if got := label(&flow.Node{Kind: flow.Activity, Label: c.in}); got != c.want {
+		if got := label(&flow.Node{Kind: flow.Activity, Label: c.in}, true); got != c.want {
 			t.Errorf("label(%q) = %s, want %s", c.in, got, c.want)
 		}
 	}
-	if got := label(&flow.Node{Kind: flow.Decision, Label: `say "hi"`}); got != `"say #quot;hi#quot;"` {
+	if got := label(&flow.Node{Kind: flow.Decision, Label: `say "hi"`}, true); got != `"say #quot;hi#quot;"` {
 		t.Errorf("quote escape: %s", got)
 	}
 	if id("my-activity") != "my_activity" || id("end") != "end_" {
@@ -53,7 +53,7 @@ func TestExitBackEdge(t *testing.T) {
 		Edges: []flow.Edge{{From: "l0", To: "l1", Label: "do"}, {From: "l1", To: "l0", Label: "done", Back: true},
 			{From: "l1", To: "A", Label: "do"}, {From: "A", To: "l0", Back: true, Break: true}},
 	}
-	out := string(Mermaid(g))
+	out := string(Mermaid(g, Default))
 	for _, want := range []string{"l1 -. done .-> l0\n", "A -.-> l0\n", "linkStyle 1 stroke:#2e7d32", "linkStyle 3 stroke:#333"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q:\n%s", want, out)
@@ -67,7 +67,7 @@ func TestExitBackEdge(t *testing.T) {
 // A loop subgraph must not take the ID of an activity node.
 func TestSubgraphIDClash(t *testing.T) {
 	g := &flow.Graph{Nodes: []*flow.Node{{ID: "l0", Kind: flow.Loop, Label: "x"}, {ID: "L0", Kind: flow.Activity, Label: "L0", In: "l0"}}}
-	if out := string(Mermaid(g)); !strings.Contains(out, "subgraph L0_ [") || !strings.Contains(out, "style L0_ ") {
+	if out := string(Mermaid(g, Default)); !strings.Contains(out, "subgraph L0_ [") || !strings.Contains(out, "style L0_ ") {
 		t.Errorf("subgraph ID clash:\n%s", out)
 	}
 }
@@ -79,7 +79,7 @@ func TestEdgeLabelQuoted(t *testing.T) {
 		Nodes: []*flow.Node{{ID: "l0", Kind: flow.Loop, Label: "x"}, {ID: "d0", Kind: flow.Decision, Label: "k", In: "l0"}},
 		Edges: []flow.Edge{{From: "l0", To: "d0", Label: "do"}, {From: "d0", To: "l0", Label: "`a.-b`", Back: true}, {From: "d0", To: "l0", Label: `"x-->y"`}},
 	}
-	out := string(Mermaid(g))
+	out := string(Mermaid(g, Default))
 	for _, want := range []string{"d0 -.->|\"#96;a.-b#96;\"| l0\n", "d0 -->|\"#quot;x-->y#quot;\"| l0\n"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q:\n%s", want, out)
