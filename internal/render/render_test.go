@@ -71,3 +71,18 @@ func TestSubgraphIDClash(t *testing.T) {
 		t.Errorf("subgraph ID clash:\n%s", out)
 	}
 }
+
+// Edge labels that are not plain text are quoted, so "-->" or ".-" in a case
+// label cannot end the arrow early.
+func TestEdgeLabelQuoted(t *testing.T) {
+	g := &flow.Graph{
+		Nodes: []*flow.Node{{ID: "l0", Kind: flow.Loop, Label: "x"}, {ID: "d0", Kind: flow.Decision, Label: "k", In: "l0"}},
+		Edges: []flow.Edge{{From: "l0", To: "d0", Label: "do"}, {From: "d0", To: "l0", Label: "`a.-b`", Back: true}, {From: "d0", To: "l0", Label: `"x-->y"`}},
+	}
+	out := string(Mermaid(g))
+	for _, want := range []string{"d0 -.->|\"#96;a.-b#96;\"| l0\n", "d0 -->|\"#quot;x-->y#quot;\"| l0\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q:\n%s", want, out)
+		}
+	}
+}
