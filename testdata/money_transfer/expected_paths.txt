@@ -1,0 +1,8 @@
+
+--- Execution Paths (4 total) ---
+Decision Points: 2
+
+Path 1: Start → WithdrawFunds → CurrencyConvert → NotifyATO → DepositFunds → End
+Path 2: Start → WithdrawFunds → CurrencyConvert → TakeNonResidentTax → DepositFunds → End
+Path 3: Start → WithdrawFunds → NotifyATO → DepositFunds → End
+Path 4: Start → WithdrawFunds → TakeNonResidentTax → DepositFunds → End

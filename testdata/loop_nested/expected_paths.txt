@@ -1,0 +1,11 @@
+
+--- Execution Paths (7 total) ---
+Decision Points: 2
+
+Path 1: Start → ChargeCard → NeedsShipping → ShipOrder → SendReport → End
+Path 2: Start → ChargeCard → NeedsShipping → SendReport → End
+Path 3: Start → ChargeCard → NeedsShipping → ShipOrder → SendReport → End
+Path 4: Start → ChargeCard → NeedsShipping → SendReport → End
+Path 5: Start → NeedsShipping → ShipOrder → SendReport → End
+Path 6: Start → NeedsShipping → SendReport → End
+Path 7: Start → SendReport → End
