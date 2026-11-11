@@ -94,7 +94,7 @@ A picture is faster. Python has [`temporalio-graphs`](https://github.com/LucaDeL
 
 - Loops are drawn as loops. The Python tool flattens them into a straight line.
 - A branch you didn't mark still shows up. An `if` that runs different activities on each arm becomes a decision labelled with its condition, so conditional work never looks unconditional.
-- Paths are counted by walking the graph once. Ten independent decisions don't produce the 1,024 paths you get from trying every combination.
+- Paths are counted from the shape of the graph. A decision nested inside one arm of another adds a path and doesn't double the total, and the count is worked out without listing every path. The Python tool reports 2ⁿ paths for n decisions however they are arranged.
 - Names resolve through Go's types, so import aliases, method values such as `a.Charge`, and `const` names all lead to the real function or string.
 
 ## What it draws
@@ -107,9 +107,9 @@ A picture is faster. Python has [`temporalio-graphs`](https://github.com/LucaDeL
 | `//timetell:decision Label` above an `if`, a `for`, or a timed wait | your label in place of the condition source |
 | `if err != nil { return err }` | nothing |
 | an error arm that does work, such as a saga compensation | an `error` edge to that work |
-| `for`, `for … range`, `for {}`, nested loops, `break`, `continue` | a dashed loop box with dotted back edges and a highlighted exit |
+| `for`, `for … range`, `for {}`, nested loops, `break`, `continue` | a dashed loop box with dotted back edges and a highlighted exit. A loop whose body does no Temporal work is not drawn |
 | `GetSignalChannel(…).Receive`, `workflow.Await` | a wait node, labelled with the signal when timetell can tell which one |
-| `AwaitWithTimeout` whose result feeds an `if` | a wait node with `Signaled` and `Timeout` edges |
+| `AwaitWithTimeout` followed directly by `if ok` or `if !ok` on its result | a wait node with `Signaled` and `Timeout` edges. Any other test of the result, such as `if ok && ready`, is an ordinary decision after the wait |
 | `workflow.Sleep`, `workflow.NewTimer` | a timer node, showing the duration when it is a constant |
 | `return workflow.NewContinueAsNewError(…)` | an edge to End labelled `continue-as-new` |
 | the same activity called twice | two nodes (`SendEmail`, `SendEmail_2`), so a repeat never looks like a loop |
@@ -173,7 +173,7 @@ Path 3: Start → WithdrawFunds → NotifyATO → DepositFunds → End
 Path 4: Start → WithdrawFunds → TakeNonResidentTax → DepositFunds → End
 ```
 
-`-OutputFormat full` prints the graph, the paths, and a validation report. The report warns about each activity or signal name that is built at runtime, each construct from the table above that it had to skip, and each workflow with more decisions than `MaxDecisionPoints`.
+`-OutputFormat full` prints the graph, the paths, and a validation report. The report warns about each activity name and each received signal name that is built at runtime, each construct the table above marks with a warning, and each workflow with more decisions than `MaxDecisionPoints`. A clean report is not proof that everything was drawn: the constructs marked "no warning" stay silent, and a `workflow.Await` whose signal can't be worked out is labelled `wait` without a warning.
 
 ### Naming decisions
 
@@ -272,7 +272,7 @@ It keeps that tool's node shapes, labels, config names, and output formats, so o
 
 ## Contributing
 
-Each fixture in [`testdata/`](testdata) is a small workflow plus the Mermaid it should produce. Support for a new construct usually starts with a new fixture. Run `go test ./...`, and `go test ./... -update` to regenerate the expected files after an intended change.
+Each fixture in [`testdata/`](testdata) is a small workflow plus the Mermaid it should produce. Support for a new construct usually starts with a new fixture. Run `go test ./...`. After an intended change, `go test . ./internal/render -update` regenerates the expected files (only those two packages know the `-update` flag).
 
 ## Licence
 

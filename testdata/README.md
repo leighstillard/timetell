@@ -1,6 +1,6 @@
 # Fixtures
 
-A separate module (`go.temporal.io/sdk` v1.50.0), so the root module never imports the SDK. Each directory holds `workflow.go` (workflows, activities and a `Register(worker.Worker)`) and `expected.mmd`, the intended Mermaid output with default config. A fixture with several workflows has one graph per workflow, sorted by name, each headed by a `%% Name` comment. `go test ./... -update` rewrites the goldens.
+A separate module (`go.temporal.io/sdk` v1.50.0), so the root module never imports the SDK. Each directory holds `workflow.go` (workflows, activities and a `Register(worker.Worker)`) and `expected.mmd`, the intended Mermaid output with default config. A fixture with several workflows has one graph per workflow, sorted by name, each headed by a `%% Name` comment. `go test . ./internal/render -update` rewrites the goldens.
 
 | Fixture | Exercises | Task |
 |---|---|---|
