@@ -108,10 +108,8 @@ func Graph(dir string, cfg Config, patterns ...string) ([]byte, error) {
 // decisions counts decisions and the signal waits that branch.
 func decisions(g *flow.Graph) int {
 	out := map[string]int{}
-	for _, e := range g.Edges {
-		if !e.Back {
-			out[e.From]++
-		}
+	for _, e := range g.Edges { // back edges count: a wait whose signaled arm loops still branches
+		out[e.From]++
 	}
 	n := 0
 	for _, nd := range g.Nodes {

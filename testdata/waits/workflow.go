@@ -34,11 +34,34 @@ func Waits(ctx workflow.Context, d time.Duration) error {
 	return workflow.ExecuteActivity(ctx, Finish).Get(ctx, nil)
 }
 
+// Poll's wait branches although its Signaled edge is a back edge, and both
+// arms of the if read the channel before rebinding it, so they are the same
+// work and draw no decision.
+func Poll(ctx workflow.Context, fast bool) error {
+	ch := workflow.GetSignalChannel(ctx, StartSignal)
+	if fast {
+		ch.Receive(ctx, nil)
+		ch = workflow.GetSignalChannel(ctx, ResumeSignal)
+	} else {
+		ch.Receive(ctx, nil)
+		ch = workflow.GetSignalChannel(ctx, ResumeSignal)
+	}
+	ch.Receive(ctx, nil)
+	for {
+		ok, _ := workflow.AwaitWithTimeout(ctx, time.Hour, func() bool { return false })
+		if !ok {
+			break
+		}
+	}
+	return nil
+}
+
 func Escalate(ctx context.Context) error { return nil }
 func Finish(ctx context.Context) error   { return nil }
 
 func Register(w worker.Worker) {
 	w.RegisterWorkflow(Waits)
+	w.RegisterWorkflow(Poll)
 	w.RegisterActivity(Escalate)
 	w.RegisterActivity(Finish)
 }
