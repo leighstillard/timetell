@@ -23,7 +23,7 @@ type Config struct {
 	// SignalSuccessLabel and SignalTimeoutLabel label the two edges out of an
 	// AwaitWithTimeout whose ok an if tests.
 	SignalSuccessLabel, SignalTimeoutLabel string
-	// SplitNamesByWords splits camelCase activity (and, later, signal) names.
+	// SplitNamesByWords splits camelCase activity and signal names.
 	SplitNamesByWords bool
 	// MaxDecisionPoints: more decisions than this in one workflow is a warning.
 	MaxDecisionPoints int
