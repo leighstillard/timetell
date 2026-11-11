@@ -8,7 +8,8 @@ A separate module (`go.temporal.io/sdk` v1.50.0), so the root module never impor
 | simple_linear | linear activities, `if err := …; err != nil { return err }` not drawn | .5, .6 |
 | money_transfer | two `//timetell:decision` decisions, reconvergence, error check after every activity (port). Also `expected_labels.mmd` (custom labels, LR), `expected_nosplit.mmd` (`SplitNamesByWords` false), `expected_full.txt`, `expected_paths.txt` and `expected_paths_capped.txt` (`MaxPaths` 2) | .5, .6, .7, .8 |
 | approval | `AwaitWithTimeout` whose `ok` feeds an `if`: Signaled/Timeout (port of signal_workflow). `expected_paths.txt`: the wait counts as a decision point | .9 |
-| waits | `Poll`: a wait whose Signaled edge loops still counts as a decision, and equal arms that rebind a channel draw no decision (`expected_paths.txt`). `Waits`: single-edge waits: `Receive`, `Await` labelled with the signal it reads, `Sleep`/`NewTimer` with constant and variable durations; `if !ok` swaps Signaled/Timeout | .9 |
+| waits | single-edge waits: `Receive`, `Await` labelled with the signal it reads, `Sleep`/`NewTimer` with constant and variable durations; `if !ok` swaps Signaled/Timeout | .9 |
+| wait_loop | a timed wait whose Signaled edge is a back edge still counts as a decision (`expected_paths.txt`); equal `if` arms that rebind a channel variable draw no decision and do not relabel later waits | .9 |
 | parent_child | `ExecuteChildWorkflow`, reference mode; two roots (port) | .10 |
 | signal_flow | `SignalExternalWorkflow` and `GetSignalChannel().Receive` across three workflows (port) | .9, .12 |
 | saga_compensation | error arm that runs an activity: `error` edge, no diamond | .5, .6 |
