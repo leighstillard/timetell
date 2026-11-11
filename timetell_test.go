@@ -34,7 +34,8 @@ func TestGraphGolden(t *testing.T) {
 		{"money_transfer", "expected_paths_capped.txt", capped},
 		{"loop_nested", "expected_paths.txt", paths},
 		{"approval", "expected_paths.txt", paths}, // the wait is a decision point
-		{"waits", "expected_paths.txt", paths},    // so is a wait whose signaled arm loops
+		{"wait_loop", "expected.mmd", DefaultConfig()},
+		{"wait_loop", "expected_paths.txt", paths}, // so is a wait whose signaled arm loops
 		{"classify", "expected_full.txt", full},
 	} {
 		t.Run(c.fixture+"/"+c.golden, func(t *testing.T) {

@@ -1,0 +1,19 @@
+flowchart TD
+s((Start))
+subgraph L0 ["forever"]
+  l0{{"↻"}}:::loop
+  w2{{wait}}
+end
+w0{{start}}
+w1{{resume Job}}
+e((End))
+s --> w0
+w0 --> w1
+w1 --> l0
+l0 --> w2
+w2 -. Signaled .-> l0
+w2 -- Timeout --> e
+classDef loop fill:#fde7c8,stroke:#c77700,stroke-width:2px,color:#333
+linkStyle 4 stroke:#c77700,stroke-width:2px
+linkStyle 5 stroke:#333,stroke-width:3px
+style L0 fill:#fffaf2,stroke:#c77700,stroke-dasharray:4,color:#333

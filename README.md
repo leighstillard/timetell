@@ -209,8 +209,10 @@ timetell depends on the Go standard library and `golang.org/x/tools` only. It do
 GitHub, GitLab, Notion, Obsidian, and many other tools render Mermaid in Markdown, so you can paste the output into a fenced `mermaid` block. For PNG or SVG, use [mermaid-cli](https://github.com/mermaid-js/mermaid-cli):
 
 ```sh
-timetell graph -o flow.mmd && mmdc -i flow.mmd -o flow.svg
+timetell graph -workflow MoneyTransfer -o flow.mmd && mmdc -i flow.mmd -o flow.svg
 ```
+
+Pick one workflow with `-workflow` for this. Output that holds several workflows is several diagrams in a row, which mermaid-cli can't read as one file.
 
 ## Roadmap
 
