@@ -246,6 +246,12 @@ func (w *walker) stmt(s ast.Stmt) {
 // ponytail: var declarations are not tracked; add ValueSpec if fixtures use them.
 func (w *walker) assign(s *ast.AssignStmt) {
 	w.scan(s)
+	for _, l := range s.Lhs { // a reassigned variable no longer names its old channel or wait
+		if id, ok := l.(*ast.Ident); ok {
+			delete(w.chans, w.info.ObjectOf(id))
+			delete(w.waits, w.info.ObjectOf(id))
+		}
+	}
 	for i, r := range s.Rhs {
 		c, ok := ast.Unparen(r).(*ast.CallExpr)
 		id, _ := s.Lhs[min(i, len(s.Lhs)-1)].(*ast.Ident)

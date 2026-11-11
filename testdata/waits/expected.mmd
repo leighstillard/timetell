@@ -1,13 +1,17 @@
 flowchart TD
 s((Start))
 Escalate[Escalate]
+Escalate_2[Escalate]
 Finish[Finish]
+d0{ok}
 t0(Timer 1m30s)
 t1(Timer 24h)
 t2(Timer)
+t3(Timer 1m)
 w0{{start}}
 w1{{resume Job}}
 w2{{wait}}
+w3{{start}}
 e((End))
 s --> w0
 w0 --> t0
@@ -16,6 +20,11 @@ w1 --> t1
 t1 --> t2
 t2 --> w2
 w2 -- Timeout --> Escalate
-Escalate --> Finish
-w2 -- Signaled --> Finish
+Escalate --> d0
+w2 -- Signaled --> d0
+d0 -- yes --> Escalate_2
+Escalate_2 --> t3
+d0 -- no --> t3
+t3 --> w3
+w3 --> Finish
 Finish --> e
