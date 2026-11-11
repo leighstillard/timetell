@@ -41,7 +41,7 @@ style L1 fill:#fde6c6,stroke:#c77700,stroke-dasharray:4,color:#333
 style L0 fill:#fffaf2,stroke:#c77700,stroke-dasharray:4,color:#333
 ```
 
-It came from this function. Dotted orange edges go round a loop again, and the green edge is the way out.
+It came from this function. Dotted orange edges go round a loop again. Thick edges leave a loop: green when it finishes, dark when a `break` cuts it short.
 
 ```go
 func LoopNested(ctx workflow.Context, orders []string) error {
