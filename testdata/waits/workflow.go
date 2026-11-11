@@ -25,6 +25,12 @@ func Waits(ctx workflow.Context, d time.Duration) error {
 	if !ok {
 		_ = workflow.ExecuteActivity(ctx, Escalate).Get(ctx, nil)
 	}
+	ok = d > time.Hour // reassigned: the if below is a plain decision, not the wait's two arms
+	if ok {
+		_ = workflow.ExecuteActivity(ctx, Escalate).Get(ctx, nil)
+	}
+	_ = workflow.NewTimerWithOptions(ctx, time.Minute, workflow.TimerOptions{}).Get(ctx, nil)
+	workflow.GetSignalChannelWithOptions(ctx, StartSignal, workflow.SignalChannelOptions{}).Receive(ctx, nil)
 	return workflow.ExecuteActivity(ctx, Finish).Get(ctx, nil)
 }
 
