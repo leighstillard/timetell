@@ -1,0 +1,15 @@
+%% Poll
+
+--- Execution Paths (1 total) ---
+Decision Points: 1
+
+Path 1: Start → start → resumeJob → wait → End
+%% Waits
+
+--- Execution Paths (4 total) ---
+Decision Points: 2
+
+Path 1: Start → start → Timer 1m30s → resumeJob → Timer 24h → Timer → wait → Escalate → Escalate → Timer 1m → start → Finish → End
+Path 2: Start → start → Timer 1m30s → resumeJob → Timer 24h → Timer → wait → Escalate → Timer 1m → start → Finish → End
+Path 3: Start → start → Timer 1m30s → resumeJob → Timer 24h → Timer → wait → Escalate → Timer 1m → start → Finish → End
+Path 4: Start → start → Timer 1m30s → resumeJob → Timer 24h → Timer → wait → Timer 1m → start → Finish → End

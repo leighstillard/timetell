@@ -9,6 +9,7 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -485,7 +486,7 @@ func (w *walker) sameClauses(body *ast.BlockStmt) []ast.Stmt {
 func (w *walker) sig(list []ast.Stmt) string {
 	sub := &walker{g: &Graph{}, words: w.words, info: w.info, fset: w.fset, dirs: w.dirs,
 		ids: map[string]int{}, seen: map[Edge]bool{}, fr: []exit{{from: "x"}},
-		chans: w.chans, waits: map[types.Object]string{}}
+		chans: maps.Clone(w.chans), waits: map[types.Object]string{}}
 	for _, f := range w.frames {
 		sub.frames = append(sub.frames, &frame{label: f.label, loop: f.loop})
 	}
